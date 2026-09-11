@@ -1,6 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -22,11 +20,11 @@ BarWidget {
   Process {
     id: statusProc
     command: ["aethershift", "status", "--json"]
-    stdout: StderrMode.Ignore
-    onExited: function(exitCode) {
-      if (exitCode === 0) {
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
         try {
-          var data = JSON.parse(statusProc.readStdout())
+          var data = JSON.parse(text || "{}")
           root.statusInfo = data
           root.activeProfile = data.active_profile || "native"
           root.overlayCount = data.overlays_count || 0
@@ -34,8 +32,6 @@ BarWidget {
         } catch(e) {
           root.daemonOnline = false
         }
-      } else {
-        root.daemonOnline = false
       }
     }
   }
@@ -46,7 +42,7 @@ BarWidget {
     repeat: true
     triggeredOnStart: true
     onTriggered: {
-      statusProc.running = true
+      if (!statusProc.running) statusProc.running = true
     }
   }
 
@@ -102,18 +98,21 @@ BarWidget {
         spacing: Style.space(12)
 
         // Header
-        RowLayout {
+        Row {
           width: parent.width
-          spacing: 8
+          spacing: Style.space(8)
 
           Text {
             text: "⚡ AetherShift"
             font.bold: true
             font.pixelSize: Style.font.title
-            color: root.bar ? root.bar.foreground : "#ffffff"
+            color: root.bar ? root.bar.foreground : Color.foreground
           }
 
-          Item { Layout.fillWidth: true }
+          Item {
+            width: Math.max(0, parent.width - 160)
+            height: 1
+          }
 
           Text {
             text: "v" + (root.statusInfo.version || "0.1.0")
@@ -122,55 +121,57 @@ BarWidget {
           }
         }
 
-        Rectangle {
+        PanelSeparator {
           width: parent.width
-          height: 1
-          color: "#3f3f46"
+          foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
         // Profile Switch Section
-        Text {
+        PanelSectionHeader {
           text: "PARADIGM PROFILES"
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          color: "#a1a1aa"
+          foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
-        RowLayout {
+        Row {
           width: parent.width
-          spacing: 6
+          spacing: Style.space(6)
+          readonly property real btnW: (width - spacing * 3) / 4
 
           Button {
+            width: parent.btnW
             text: "🪟 Win"
-            Layout.fillWidth: true
-            highlighted: root.activeProfile === "windows"
+            bordered: true
+            active: root.activeProfile === "windows"
             onClicked: {
               Quickshell.process(["aethershift", "switch", "windows"]).running = true
               statusProc.running = true
             }
           }
           Button {
+            width: parent.btnW
             text: "🍎 Mac"
-            Layout.fillWidth: true
-            highlighted: root.activeProfile === "macos"
+            bordered: true
+            active: root.activeProfile === "macos"
             onClicked: {
               Quickshell.process(["aethershift", "switch", "macos"]).running = true
               statusProc.running = true
             }
           }
           Button {
+            width: parent.btnW
             text: "⚡ Hyb"
-            Layout.fillWidth: true
-            highlighted: root.activeProfile === "hybrid"
+            bordered: true
+            active: root.activeProfile === "hybrid"
             onClicked: {
               Quickshell.process(["aethershift", "switch", "hybrid"]).running = true
               statusProc.running = true
             }
           }
           Button {
+            width: parent.btnW
             text: "🛡️ Nat"
-            Layout.fillWidth: true
-            highlighted: root.activeProfile === "native"
+            bordered: true
+            active: root.activeProfile === "native"
             onClicked: {
               Quickshell.process(["aethershift", "restore"]).running = true
               statusProc.running = true
@@ -179,39 +180,41 @@ BarWidget {
         }
 
         // Window Policy Section
-        Text {
+        PanelSectionHeader {
           text: "WINDOW POLICY"
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          color: "#a1a1aa"
+          foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
-        RowLayout {
+        Row {
           width: parent.width
-          spacing: 6
+          spacing: Style.space(6)
+          readonly property real btnW: (width - spacing * 2) / 3
 
           Button {
+            width: parent.btnW
             text: "Tiled"
-            Layout.fillWidth: true
-            highlighted: root.statusInfo.window_policy === "tiled"
+            bordered: true
+            active: root.statusInfo.window_policy === "tiled"
             onClicked: {
               Quickshell.process(["aethershift", "window-mode", "set", "tiled"]).running = true
               statusProc.running = true
             }
           }
           Button {
+            width: parent.btnW
             text: "Floating"
-            Layout.fillWidth: true
-            highlighted: root.statusInfo.window_policy === "floating"
+            bordered: true
+            active: root.statusInfo.window_policy === "floating"
             onClicked: {
               Quickshell.process(["aethershift", "window-mode", "set", "floating"]).running = true
               statusProc.running = true
             }
           }
           Button {
+            width: parent.btnW
             text: "Follow"
-            Layout.fillWidth: true
-            highlighted: root.statusInfo.window_policy === "follow-profile"
+            bordered: true
+            active: root.statusInfo.window_policy === "follow-profile"
             onClicked: {
               Quickshell.process(["aethershift", "window-mode", "set", "follow-profile"]).running = true
               statusProc.running = true
@@ -220,44 +223,47 @@ BarWidget {
         }
 
         // Quick Snap Row
-        Text {
+        PanelSectionHeader {
           text: "QUICK SNAP"
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          color: "#a1a1aa"
+          foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
-        RowLayout {
+        Row {
           width: parent.width
-          spacing: 6
+          spacing: Style.space(6)
+          readonly property real btnW: (width - spacing * 3) / 4
 
           Button {
+            width: parent.btnW
             text: "◧ Left"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               Quickshell.process(["aethershift", "snap", "half-left"]).running = true
               root.panelOpen = false
             }
           }
           Button {
+            width: parent.btnW
             text: "◨ Right"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               Quickshell.process(["aethershift", "snap", "half-right"]).running = true
               root.panelOpen = false
             }
           }
           Button {
+            width: parent.btnW
             text: "🗖 Max"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               Quickshell.process(["aethershift", "snap", "maximize"]).running = true
               root.panelOpen = false
             }
           }
           Button {
+            width: parent.btnW
             text: "↺ Reset"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               Quickshell.process(["aethershift", "snap", "restore"]).running = true
               root.panelOpen = false
@@ -265,20 +271,21 @@ BarWidget {
           }
         }
 
-        Rectangle {
+        PanelSeparator {
           width: parent.width
-          height: 1
-          color: "#3f3f46"
+          foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
         // Action Buttons (Full Settings / Overview / HUD)
-        RowLayout {
+        Row {
           width: parent.width
-          spacing: 8
+          spacing: Style.space(8)
+          readonly property real btnW: (width - spacing) / 2
 
           Button {
+            width: parent.btnW
             text: "🪟 Overview"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               root.panelOpen = false
               Quickshell.process(["aethershift", "overview"]).running = true
@@ -286,8 +293,9 @@ BarWidget {
           }
 
           Button {
+            width: parent.btnW
             text: "📋 Cheat-Sheet"
-            Layout.fillWidth: true
+            bordered: true
             onClicked: {
               root.panelOpen = false
               Quickshell.process(["aethershift", "hud"]).running = true

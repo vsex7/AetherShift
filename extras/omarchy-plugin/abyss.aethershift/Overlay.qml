@@ -42,11 +42,11 @@ FloatingWindow {
   Process {
     id: clientsProc
     command: ["hyprctl", "clients", "-j"]
-    stdout: StderrMode.Ignore
-    onExited: function(code) {
-      if (code === 0) {
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
         try {
-          window.clientWindows = JSON.parse(clientsProc.readStdout())
+          window.clientWindows = JSON.parse(text || "[]")
         } catch(e) {}
       }
     }
@@ -55,11 +55,11 @@ FloatingWindow {
   Process {
     id: statusFetchProc
     command: ["aethershift", "status", "--json"]
-    stdout: StderrMode.Ignore
-    onExited: function(code) {
-      if (code === 0) {
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
         try {
-          window.statusInfo = JSON.parse(statusFetchProc.readStdout())
+          window.statusInfo = JSON.parse(text || "{}")
           bindingsFetchProc.command = ["aethershift", "bindings", window.statusInfo.active_profile || "windows", "--json"]
           bindingsFetchProc.running = true
         } catch(e) {}
@@ -70,11 +70,11 @@ FloatingWindow {
   Process {
     id: bindingsFetchProc
     command: ["aethershift", "bindings", "--json"]
-    stdout: StderrMode.Ignore
-    onExited: function(code) {
-      if (code === 0) {
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
         try {
-          var res = JSON.parse(bindingsFetchProc.readStdout())
+          var res = JSON.parse(text || "{}")
           window.currentBindings = res.bindings || []
         } catch(e) {}
       }
@@ -82,8 +82,8 @@ FloatingWindow {
   }
 
   function refreshData() {
-    clientsProc.running = true
-    statusFetchProc.running = true
+    if (!clientsProc.running) clientsProc.running = true
+    if (!statusFetchProc.running) statusFetchProc.running = true
   }
 
   Rectangle {
@@ -110,19 +110,19 @@ FloatingWindow {
 
       Button {
         text: "🪟 Task Overview"
-        highlighted: window.currentView === "overview"
+        active: window.currentView === "overview"
         onClicked: { window.currentView = "overview"; window.refreshData() }
       }
 
       Button {
         text: "⚙️ Settings"
-        highlighted: window.currentView === "settings"
+        active: window.currentView === "settings"
         onClicked: { window.currentView = "settings"; window.refreshData() }
       }
 
       Button {
         text: "📋 Cheat-Sheet"
-        highlighted: window.currentView === "cheatsheet"
+        active: window.currentView === "cheatsheet"
         onClicked: { window.currentView = "cheatsheet"; window.refreshData() }
       }
 
@@ -245,22 +245,22 @@ FloatingWindow {
         spacing: 12
         Button {
           text: "🪟 Windows"
-          highlighted: window.statusInfo.active_profile === "windows"
+          active: window.statusInfo.active_profile === "windows"
           onClicked: { Quickshell.process(["aethershift", "switch", "windows"]).running = true; window.refreshData() }
         }
         Button {
           text: "🍎 macOS"
-          highlighted: window.statusInfo.active_profile === "macos"
+          active: window.statusInfo.active_profile === "macos"
           onClicked: { Quickshell.process(["aethershift", "switch", "macos"]).running = true; window.refreshData() }
         }
         Button {
           text: "⚡ Hybrid"
-          highlighted: window.statusInfo.active_profile === "hybrid"
+          active: window.statusInfo.active_profile === "hybrid"
           onClicked: { Quickshell.process(["aethershift", "switch", "hybrid"]).running = true; window.refreshData() }
         }
         Button {
           text: "🛡️ Native Baseline"
-          highlighted: window.statusInfo.active_profile === "native"
+          active: window.statusInfo.active_profile === "native"
           onClicked: { Quickshell.process(["aethershift", "restore"]).running = true; window.refreshData() }
         }
       }
@@ -276,22 +276,22 @@ FloatingWindow {
         spacing: 12
         Button {
           text: "Tiled (Always)"
-          highlighted: window.statusInfo.window_policy === "tiled"
+          active: window.statusInfo.window_policy === "tiled"
           onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "tiled"]).running = true; window.refreshData() }
         }
         Button {
           text: "Floating (Always)"
-          highlighted: window.statusInfo.window_policy === "floating"
+          active: window.statusInfo.window_policy === "floating"
           onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "floating"]).running = true; window.refreshData() }
         }
         Button {
           text: "Follow Profile"
-          highlighted: window.statusInfo.window_policy === "follow-profile"
+          active: window.statusInfo.window_policy === "follow-profile"
           onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "follow-profile"]).running = true; window.refreshData() }
         }
         Button {
           text: "Omarchy Default"
-          highlighted: window.statusInfo.window_policy === "omarchy"
+          active: window.statusInfo.window_policy === "omarchy"
           onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "omarchy"]).running = true; window.refreshData() }
         }
       }
