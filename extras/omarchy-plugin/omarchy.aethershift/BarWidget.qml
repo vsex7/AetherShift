@@ -65,9 +65,10 @@ BarWidget {
     onPressed: function(mouseButton) {
       if (!root.bar) return
       if (mouseButton === Qt.RightButton) {
-        root.bar.run("aethershift tui")
+        // Open the settings panel / overlay
+        root.bar.run("omarchy-shell shell summon omarchy.aethershift '{\"view\":\"settings\"}'")
       } else {
-        // Left click: cycle profile
+        // Left click: instant cycle
         root.bar.run("aethershift cycle")
         statusProc.running = true
       }

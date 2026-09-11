@@ -139,7 +139,7 @@ fn test_presets_loading_in_state_manager() {
     assert!(names.contains(&"hybrid".to_string()));
 
     let windows = sm.get_profile("windows").unwrap();
-    assert_eq!(windows.bindings.len(), 19);
+    assert_eq!(windows.bindings.len(), 20);
 
     let macos = sm.get_profile("macos").unwrap();
     assert_eq!(macos.bindings.len(), 17);
@@ -158,11 +158,11 @@ fn test_state_manager_switch_and_diff() {
     let plan = sm.switch_profile("windows").unwrap();
     assert_eq!(plan.target_profile, "windows");
     assert_eq!(plan.unbind.len(), 0);
-    assert_eq!(plan.bind.len(), 19);
+    assert_eq!(plan.bind.len(), 20);
 
     sm.commit_switch(&plan).unwrap();
     assert_eq!(sm.active_profile_name(), "windows");
-    assert_eq!(sm.overlays_count(), 19);
+    assert_eq!(sm.overlays_count(), 20);
 
     // Switching to windows again should produce an empty plan (no-op diff)
     let plan_noop = sm.switch_profile("windows").unwrap();
@@ -172,7 +172,7 @@ fn test_state_manager_switch_and_diff() {
     let plan_macos = sm.switch_profile("macos").unwrap();
     assert_eq!(plan_macos.target_profile, "macos");
     // Eleven differing Windows overlays are removed; identical actions carry over.
-    assert_eq!(plan_macos.unbind.len(), 17);
+    assert_eq!(plan_macos.unbind.len(), 18);
     // All macOS overlays should be bound.
     // Five identical actions carry over, leaving ten new macOS bindings.
     assert_eq!(plan_macos.bind.len(), 15);
@@ -296,7 +296,7 @@ fn test_phase3_state_manager_profile_lifecycle() {
     // Create a new profile
     sm.create_profile("workflow", Some("Daily workflow"), Some("windows"))
         .unwrap();
-    assert_eq!(sm.get_profile("workflow").unwrap().bindings.len(), 19);
+    assert_eq!(sm.get_profile("workflow").unwrap().bindings.len(), 20);
 
     // Save profile to temporary location
     let tmp = std::env::temp_dir().join("aethershift_lifecycle_test");

@@ -196,6 +196,34 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
             let resp = send_daemon_request(socket_path, &Request::GetRecommendations).await?;
             handle_recommendations_response(resp, json)?;
         }
+        Command::Settings => {
+            let status = std::process::Command::new("omarchy-shell")
+                .args(["shell", "summon", "omarchy.aethershift", "{\"view\":\"settings\"}"])
+                .status();
+            if let Ok(s) = status {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+            println!("Omarchy Quickshell not detected, opening TUI settings...");
+            aethershift_tui::run_tui(Some(socket_path.to_path_buf()))
+                .await
+                .context("TUI execution failed")?;
+        }
+        Command::Overview => {
+            let status = std::process::Command::new("omarchy-shell")
+                .args(["shell", "summon", "omarchy.aethershift", "{\"view\":\"overview\"}"])
+                .status();
+            if let Ok(s) = status {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+            println!("Omarchy Quickshell not detected, opening TUI overview...");
+            aethershift_tui::run_tui(Some(socket_path.to_path_buf()))
+                .await
+                .context("TUI execution failed")?;
+        }
         Command::Tui => {
             aethershift_tui::run_tui(Some(socket_path.to_path_buf()))
                 .await

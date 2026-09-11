@@ -779,7 +779,7 @@ mod tests {
         let gaming = sm.get_profile("gaming").unwrap();
         assert_eq!(gaming.name, "gaming");
         assert_eq!(gaming.description, "Gaming profile");
-        assert_eq!(gaming.bindings.len(), 19);
+        assert_eq!(gaming.bindings.len(), 20);
 
         // Duplicate name fails
         assert!(sm.create_profile("gaming", None, None).is_err());

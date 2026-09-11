@@ -114,6 +114,12 @@ pub enum Command {
         json: bool,
     },
 
+    /// Launch Graphical Settings panel or summon via Omarchy Quickshell
+    Settings,
+
+    /// Launch full-screen Task Overview
+    Overview,
+
     /// Launch the interactive terminal console (TUI)
     Tui,
 
