@@ -7,12 +7,12 @@
   "description": "Dynamic desktop paradigm indicator, settings panel, task overview, cheat-sheet HUD and snap feedback",
   "kinds": [
     "bar-widget",
-    "overlay"
+    "panel"
   ],
   "keepLoaded": true,
   "entryPoints": {
     "barWidget": "BarWidget.qml",
-    "overlay": "Overlay.qml"
+    "panel": "Overlay.qml"
   },
   "barWidget": {
     "displayName": "AetherShift Paradigm",

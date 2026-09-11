@@ -6,47 +6,36 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-Item {
-  id: root
+FloatingWindow {
+  id: window
+  title: "AetherShift Control Center"
+  color: "#18181be6"
   implicitWidth: 840
   implicitHeight: 620
+  minimumSize: Qt.size(600, 480)
 
-  property string currentView: "overview" // "overview", "settings", "cheatsheet", "feedback"
+  property var shell: null
+  property string currentView: "overview" // "overview", "settings", "cheatsheet"
   property var clientWindows: []
-  property var activeWorkspaces: []
   property var statusInfo: ({})
   property var currentBindings: []
-  property var snapFeedback: ({})
 
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch(e) { payload = ({}) }
     if (payload.view) {
-      root.currentView = payload.view
+      window.currentView = payload.view
     } else {
-      root.currentView = "overview"
+      window.currentView = "overview"
     }
-
-    if (payload.feedback) {
-      root.snapFeedback = payload.feedback
-      feedbackTimer.restart()
-    }
-
+    window.visible = true
     refreshData()
   }
 
   function close() {
-    Quickshell.process(["omarchy-shell", "shell", "hide", "abyss.aethershift"]).running = true
-  }
-
-  Timer {
-    id: feedbackTimer
-    interval: 800
-    repeat: false
-    onTriggered: {
-      if (root.currentView === "feedback") {
-        root.close()
-      }
+    window.visible = false
+    if (window.shell && typeof window.shell.hide === "function") {
+      window.shell.hide("abyss.aethershift")
     }
   }
 
@@ -57,7 +46,7 @@ Item {
     onExited: function(code) {
       if (code === 0) {
         try {
-          root.clientWindows = JSON.parse(clientsProc.readStdout())
+          window.clientWindows = JSON.parse(clientsProc.readStdout())
         } catch(e) {}
       }
     }
@@ -70,8 +59,8 @@ Item {
     onExited: function(code) {
       if (code === 0) {
         try {
-          root.statusInfo = JSON.parse(statusFetchProc.readStdout())
-          bindingsFetchProc.command = ["aethershift", "bindings", root.statusInfo.active_profile || "windows", "--json"]
+          window.statusInfo = JSON.parse(statusFetchProc.readStdout())
+          bindingsFetchProc.command = ["aethershift", "bindings", window.statusInfo.active_profile || "windows", "--json"]
           bindingsFetchProc.running = true
         } catch(e) {}
       }
@@ -86,7 +75,7 @@ Item {
       if (code === 0) {
         try {
           var res = JSON.parse(bindingsFetchProc.readStdout())
-          root.currentBindings = res.bindings || []
+          window.currentBindings = res.bindings || []
         } catch(e) {}
       }
     }
@@ -97,36 +86,9 @@ Item {
     statusFetchProc.running = true
   }
 
-  // Visual Snap Feedback Box (Shown when in feedback view or when snap feedback is active)
   Rectangle {
-    id: snapFeedbackBox
-    visible: root.currentView === "feedback" && root.snapFeedback && root.snapFeedback.to
-    x: (root.snapFeedback && root.snapFeedback.to) ? root.snapFeedback.to[0] : 0
-    y: (root.snapFeedback && root.snapFeedback.to) ? root.snapFeedback.to[1] : 0
-    width: (root.snapFeedback && root.snapFeedback.to) ? root.snapFeedback.to[2] : 0
-    height: (root.snapFeedback && root.snapFeedback.to) ? root.snapFeedback.to[3] : 0
-    color: "#6366f133"
-    border.color: "#818cf8"
-    border.width: 3
-    radius: 12
-
-    Label {
-      anchors.centerIn: parent
-      text: (root.snapFeedback ? root.snapFeedback.layout : "") + (root.snapFeedback && root.snapFeedback.preview ? " (Preview)" : "")
-      font.bold: true
-      font.pixelSize: 22
-      color: "#ffffff"
-    }
-  }
-
-  // Main UI Card (Overview, Settings, Cheatsheet)
-  Rectangle {
-    visible: root.currentView !== "feedback"
     anchors.fill: parent
     color: "#18181be6"
-    radius: 12
-    border.color: "#3f3f46"
-    border.width: 1
 
     // Top Navigation Tabs
     RowLayout {
@@ -148,31 +110,31 @@ Item {
 
       Button {
         text: "🪟 Task Overview"
-        highlighted: root.currentView === "overview"
-        onClicked: { root.currentView = "overview"; root.refreshData() }
+        highlighted: window.currentView === "overview"
+        onClicked: { window.currentView = "overview"; window.refreshData() }
       }
 
       Button {
         text: "⚙️ Settings"
-        highlighted: root.currentView === "settings"
-        onClicked: { root.currentView = "settings"; root.refreshData() }
+        highlighted: window.currentView === "settings"
+        onClicked: { window.currentView = "settings"; window.refreshData() }
       }
 
       Button {
         text: "📋 Cheat-Sheet"
-        highlighted: root.currentView === "cheatsheet"
-        onClicked: { root.currentView = "cheatsheet"; root.refreshData() }
+        highlighted: window.currentView === "cheatsheet"
+        onClicked: { window.currentView = "cheatsheet"; window.refreshData() }
       }
 
       Button {
         text: "✕ Close"
-        onClicked: root.close()
+        onClicked: window.close()
       }
     }
 
     // View 1: Task Overview
     ScrollView {
-      visible: root.currentView === "overview"
+      visible: window.currentView === "overview"
       anchors.top: navBar.bottom
       anchors.bottom: parent.bottom
       anchors.left: parent.left
@@ -185,7 +147,7 @@ Item {
         spacing: 16
 
         Repeater {
-          model: root.clientWindows
+          model: window.clientWindows
           delegate: Rectangle {
             width: 250
             height: 140
@@ -215,7 +177,7 @@ Item {
                   implicitHeight: 24
                   onClicked: {
                     Quickshell.process(["hyprctl", "dispatch", "closewindow", "address:" + modelData.address]).running = true
-                    root.refreshData()
+                    window.refreshData()
                   }
                 }
               }
@@ -254,7 +216,7 @@ Item {
               hoverEnabled: true
               onClicked: {
                 Quickshell.process(["hyprctl", "dispatch", "focuswindow", "address:" + modelData.address]).running = true
-                root.close()
+                window.close()
               }
             }
           }
@@ -264,7 +226,7 @@ Item {
 
     // View 2: Settings Panel
     ColumnLayout {
-      visible: root.currentView === "settings"
+      visible: window.currentView === "settings"
       anchors.top: navBar.bottom
       anchors.bottom: parent.bottom
       anchors.left: parent.left
@@ -283,23 +245,23 @@ Item {
         spacing: 12
         Button {
           text: "🪟 Windows"
-          highlighted: root.statusInfo.active_profile === "windows"
-          onClicked: { Quickshell.process(["aethershift", "switch", "windows"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.active_profile === "windows"
+          onClicked: { Quickshell.process(["aethershift", "switch", "windows"]).running = true; window.refreshData() }
         }
         Button {
           text: "🍎 macOS"
-          highlighted: root.statusInfo.active_profile === "macos"
-          onClicked: { Quickshell.process(["aethershift", "switch", "macos"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.active_profile === "macos"
+          onClicked: { Quickshell.process(["aethershift", "switch", "macos"]).running = true; window.refreshData() }
         }
         Button {
           text: "⚡ Hybrid"
-          highlighted: root.statusInfo.active_profile === "hybrid"
-          onClicked: { Quickshell.process(["aethershift", "switch", "hybrid"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.active_profile === "hybrid"
+          onClicked: { Quickshell.process(["aethershift", "switch", "hybrid"]).running = true; window.refreshData() }
         }
         Button {
           text: "🛡️ Native Baseline"
-          highlighted: root.statusInfo.active_profile === "native"
-          onClicked: { Quickshell.process(["aethershift", "restore"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.active_profile === "native"
+          onClicked: { Quickshell.process(["aethershift", "restore"]).running = true; window.refreshData() }
         }
       }
 
@@ -314,23 +276,23 @@ Item {
         spacing: 12
         Button {
           text: "Tiled (Always)"
-          highlighted: root.statusInfo.window_policy === "tiled"
-          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "tiled"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.window_policy === "tiled"
+          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "tiled"]).running = true; window.refreshData() }
         }
         Button {
           text: "Floating (Always)"
-          highlighted: root.statusInfo.window_policy === "floating"
-          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "floating"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.window_policy === "floating"
+          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "floating"]).running = true; window.refreshData() }
         }
         Button {
           text: "Follow Profile"
-          highlighted: root.statusInfo.window_policy === "follow-profile"
-          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "follow-profile"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.window_policy === "follow-profile"
+          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "follow-profile"]).running = true; window.refreshData() }
         }
         Button {
           text: "Omarchy Default"
-          highlighted: root.statusInfo.window_policy === "omarchy"
-          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "omarchy"]).running = true; root.refreshData() }
+          highlighted: window.statusInfo.window_policy === "omarchy"
+          onClicked: { Quickshell.process(["aethershift", "window-mode", "set", "omarchy"]).running = true; window.refreshData() }
         }
       }
 
@@ -352,10 +314,10 @@ Item {
       }
 
       Label {
-        text: "Conflict & Metrics: Overlays: " + (root.statusInfo.overlays_count || 0) +
-              " | Skipped: " + (root.statusInfo.skipped_conflicts || 0) +
-              " | Forced: " + (root.statusInfo.forced_overrides || 0) +
-              " | Latency: " + (root.statusInfo.last_switch_duration_us ? (root.statusInfo.last_switch_duration_us + "µs") : "0µs")
+        text: "Conflict & Metrics: Overlays: " + (window.statusInfo.overlays_count || 0) +
+              " | Skipped: " + (window.statusInfo.skipped_conflicts || 0) +
+              " | Forced: " + (window.statusInfo.forced_overrides || 0) +
+              " | Latency: " + (window.statusInfo.last_switch_duration_us ? (window.statusInfo.last_switch_duration_us + "µs") : "0µs")
         font.pixelSize: 12
         color: "#a1a1aa"
       }
@@ -365,7 +327,7 @@ Item {
 
     // View 3: Cheat Sheet HUD
     ScrollView {
-      visible: root.currentView === "cheatsheet"
+      visible: window.currentView === "cheatsheet"
       anchors.top: navBar.bottom
       anchors.bottom: parent.bottom
       anchors.left: parent.left
@@ -378,7 +340,7 @@ Item {
         spacing: 12
 
         Label {
-          text: "Active Muscular Memory Bindings (" + (root.statusInfo.active_profile || "native").toUpperCase() + ")"
+          text: "Active Muscular Memory Bindings (" + (window.statusInfo.active_profile || "native").toUpperCase() + ")"
           font.bold: true
           font.pixelSize: 16
           color: "#6366f1"
@@ -391,7 +353,7 @@ Item {
         }
 
         Repeater {
-          model: (root.currentBindings && root.currentBindings.length > 0) ? root.currentBindings : [
+          model: (window.currentBindings && window.currentBindings.length > 0) ? window.currentBindings : [
             { key_combo: "ALT + F4", description: "Close active window" },
             { key_combo: "SUPER + LEFT / RIGHT", description: "Snap window to left/right half screen" },
             { key_combo: "SUPER + UP / DOWN", description: "Maximize window / Restore original geometry" },
@@ -435,6 +397,6 @@ Item {
   }
 
   Keys.onEscapePressed: {
-    root.close()
+    window.close()
   }
 }
