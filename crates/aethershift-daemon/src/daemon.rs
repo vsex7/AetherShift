@@ -62,6 +62,7 @@ pub struct AetherDaemon {
     stats: Arc<Mutex<StatsEngine>>,
     plugins: Arc<Mutex<PluginRegistry>>,
     health: Arc<Mutex<HealthState>>,
+    window_policy: Arc<Mutex<aethershift_protocol::WindowPolicy>>,
     hyprland: Option<HyprlandClient>,
     start_time: Instant,
     shutdown_tx: broadcast::Sender<()>,
@@ -107,6 +108,7 @@ impl AetherDaemon {
                 backend: "hyprland".to_string(),
                 ..HealthState::default()
             })),
+            window_policy: Arc::new(Mutex::new(aethershift_protocol::WindowPolicy::Omarchy)),
             hyprland: None,
             start_time: Instant::now(),
             shutdown_tx,
@@ -239,12 +241,100 @@ impl AetherDaemon {
             }
         }
 
+        // Background event listener for Phase D (WindowMode)
+        if let Some(ref client) = self.hyprland {
+            let event_client = client.clone();
+            let event_window_policy = self.window_policy.clone();
+            let event_state = self.state.clone();
+            let mut event_shutdown_rx = self.shutdown_tx.subscribe();
+
+            tokio::spawn(async move {
+                debug!("Starting Hyprland event listener task...");
+                match event_client.connect_events().await {
+                    Ok(stream) => {
+                        use tokio::io::{AsyncBufReadExt, BufReader};
+                        let (reader, _) = stream.into_split();
+                        let mut lines = BufReader::new(reader).lines();
+
+                        loop {
+                            tokio::select! {
+                                line_res = lines.next_line() => {
+                                    match line_res {
+                                        Ok(Some(line)) => {
+                                            if let Some(event) = aethershift_hyprland::HyprEvent::parse(&line) {
+                                                if let aethershift_hyprland::HyprEvent::WindowOpened { address, .. } = event {
+                                                    let policy = *event_window_policy.lock().await;
+                                                    match policy {
+                                                        aethershift_protocol::WindowPolicy::Tiled => {
+                                                            let cmd = format!(
+                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"unset\", address = \"{}\" }}))",
+                                                                address
+                                                            );
+                                                            if let Err(e) = event_client.eval_lua(&cmd).await {
+                                                                debug!("Failed to unset float for new window {}: {}", address, e);
+                                                            }
+                                                        }
+                                                        aethershift_protocol::WindowPolicy::Floating => {
+                                                            let cmd = format!(
+                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"set\", address = \"{}\" }}))",
+                                                                address
+                                                            );
+                                                            if let Err(e) = event_client.eval_lua(&cmd).await {
+                                                                debug!("Failed to set float for new window {}: {}", address, e);
+                                                            }
+                                                        }
+                                                        aethershift_protocol::WindowPolicy::FollowProfile => {
+                                                            let is_macos = {
+                                                                let st = event_state.lock().await;
+                                                                st.active_profile_name() == "macos"
+                                                            };
+                                                            let action = if is_macos { "set" } else { "unset" };
+                                                            let cmd = format!(
+                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"{}\", address = \"{}\" }}))",
+                                                                action, address
+                                                            );
+                                                            if let Err(e) = event_client.eval_lua(&cmd).await {
+                                                                debug!("Failed to set/unset float (FollowProfile) for new window {}: {}", address, e);
+                                                            }
+                                                        }
+                                                        aethershift_protocol::WindowPolicy::Omarchy => {
+                                                            // No operation; respect default compositor behavior
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Ok(None) => {
+                                            debug!("Hyprland event stream closed by server");
+                                            break;
+                                        }
+                                        Err(e) => {
+                                            warn!("Error reading Hyprland event socket2: {}", e);
+                                            break;
+                                        }
+                                    }
+                                }
+                                _ = event_shutdown_rx.recv() => {
+                                    debug!("Hyprland event listener received shutdown signal");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Could not connect to Hyprland event socket: {}. Event listening disabled.", e);
+                    }
+                }
+            });
+        }
+
         let mut shutdown_rx = self.shutdown_tx.subscribe();
         let state = self.state.clone();
         let geometry_memory = self.geometry_memory.clone();
         let stats = self.stats.clone();
         let plugins = self.plugins.clone();
         let health = self.health.clone();
+        let window_policy = self.window_policy.clone();
         let hyprland = self.hyprland.clone();
         let start_time = self.start_time;
         let shutdown_tx = self.shutdown_tx.clone();
@@ -260,6 +350,7 @@ impl AetherDaemon {
                             let stats = stats.clone();
                             let plugins = plugins.clone();
                             let health = health.clone();
+                            let window_policy = window_policy.clone();
                             let hyprland = hyprland.clone();
                             let shutdown_tx = shutdown_tx.clone();
                             let config = config.clone();
@@ -275,6 +366,7 @@ impl AetherDaemon {
                                         &stats,
                                         &plugins,
                                         &health,
+                                        &window_policy,
                                         &hyprland,
                                         start_time,
                                         &shutdown_tx,
@@ -428,6 +520,7 @@ impl AetherDaemon {
         stats: &Mutex<StatsEngine>,
         plugins: &Mutex<PluginRegistry>,
         health: &Mutex<HealthState>,
+        window_policy: &Mutex<aethershift_protocol::WindowPolicy>,
         hyprland: &Option<HyprlandClient>,
         start_time: Instant,
         shutdown_tx: &broadcast::Sender<()>,
@@ -445,8 +538,9 @@ impl AetherDaemon {
                     start_time.elapsed().as_secs(),
                     env!("CARGO_PKG_VERSION"),
                 );
+                let current_policy = *window_policy.lock().await;
                 let status_info = StatusInfo {
-                    window_policy: aethershift_protocol::WindowPolicy::Omarchy,
+                    window_policy: current_policy,
                     skipped_conflicts: health_snapshot.skipped_conflicts,
                     forced_overrides: health_snapshot.forced_overrides,
                     last_switch_duration_us: health_snapshot.max_switch_duration_us,
@@ -526,6 +620,7 @@ Response::ok(msg)
                 }
             }
             Request::Restore => {
+                *window_policy.lock().await = aethershift_protocol::WindowPolicy::Omarchy;
                 let plan = {
                     let st = state.lock().await;
                     st.restore_plan()
@@ -558,6 +653,19 @@ Response::ok("Successfully restored baseline keybindings")
                 let _ = Self::execute_plan(&plan, state, hyprland).await;
                 let _ = shutdown_tx.send(());
                 Response::ok("Daemon is shutting down")
+            }
+
+            Request::WindowMode { policy } => {
+                let mut wp = window_policy.lock().await;
+                if let Some(p) = policy {
+                    *wp = p;
+                }
+                let current_policy = *wp;
+                Response::ok_with_data(
+                    format!("Window policy is '{}'", current_policy.as_str()),
+                    &current_policy,
+                )
+                .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
             }
 
             // Phase 3 Window Layout Actions

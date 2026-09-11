@@ -216,3 +216,107 @@ fn test_notification_disabled_logic() {
     }
     assert!(!config2.notifications_disabled());
 }
+
+#[tokio::test]
+async fn test_window_mode_request_handling() {
+    use aethershift_protocol::WindowPolicy;
+
+    let sock = get_temp_sock("window_mode");
+    let sock_clone = sock.clone();
+
+    let config = DaemonConfig {
+        socket_path: Some(sock.clone()),
+        preset_dir: std::path::PathBuf::from("presets"),
+        verbose: 0,
+        no_notify: true,
+    };
+
+    let daemon = AetherDaemon::new(config);
+    let daemon_handle = tokio::spawn(async move {
+        let _ = daemon.run().await;
+    });
+
+    // Wait for daemon to be ready
+    let mut connected = false;
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if sock.exists() {
+            if let Ok(_) = UnixStream::connect(&sock).await {
+                connected = true;
+                break;
+            }
+        }
+    }
+    assert!(connected, "Daemon failed to start listening");
+
+    // 1. Check initial WindowPolicy is Omarchy via Status
+    let resp = call(&sock, &Request::Status).await.expect("Status");
+    match resp {
+        Response::Success { data, .. } => {
+            let info: StatusInfo = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(info.window_policy, WindowPolicy::Omarchy);
+        }
+        _ => panic!("Expected status success"),
+    }
+
+    // 2. Query WindowMode with None -> returns Omarchy
+    let resp = call(&sock, &Request::WindowMode { policy: None }).await.expect("WindowMode None");
+    match resp {
+        Response::Success { data, .. } => {
+            let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(policy, WindowPolicy::Omarchy);
+        }
+        _ => panic!("Expected WindowMode success"),
+    }
+
+    // 3. Set WindowMode to Tiled
+    let resp = call(&sock, &Request::WindowMode { policy: Some(WindowPolicy::Tiled) }).await.expect("WindowMode Tiled");
+    match resp {
+        Response::Success { data, .. } => {
+            let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(policy, WindowPolicy::Tiled);
+        }
+        _ => panic!("Expected WindowMode success"),
+    }
+
+    // Verify Status reflects Tiled
+    let resp = call(&sock, &Request::Status).await.expect("Status");
+    match resp {
+        Response::Success { data, .. } => {
+            let info: StatusInfo = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(info.window_policy, WindowPolicy::Tiled);
+        }
+        _ => panic!("Expected status success"),
+    }
+
+    // 4. Set WindowMode to Floating
+    let resp = call(&sock, &Request::WindowMode { policy: Some(WindowPolicy::Floating) }).await.expect("WindowMode Floating");
+    match resp {
+        Response::Success { data, .. } => {
+            let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(policy, WindowPolicy::Floating);
+        }
+        _ => panic!("Expected WindowMode success"),
+    }
+
+    // 5. Restore baseline should reset policy back to Omarchy
+    let resp = call(&sock, &Request::Restore).await.expect("Restore");
+    match resp {
+        Response::Success { .. } => {}
+        _ => panic!("Expected restore success"),
+    }
+
+    let resp = call(&sock, &Request::Status).await.expect("Status after restore");
+    match resp {
+        Response::Success { data, .. } => {
+            let info: StatusInfo = serde_json::from_value(data.unwrap()).unwrap();
+            assert_eq!(info.window_policy, WindowPolicy::Omarchy);
+        }
+        _ => panic!("Expected status success"),
+    }
+
+    // Shutdown daemon
+    let _ = call(&sock, &Request::Shutdown).await;
+    let _ = tokio::time::timeout(Duration::from_secs(3), daemon_handle).await;
+    let _ = std::fs::remove_file(sock_clone);
+}

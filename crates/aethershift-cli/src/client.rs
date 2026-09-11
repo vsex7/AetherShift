@@ -2,7 +2,7 @@ use std::path::Path;
 use std::str::FromStr;
 use anyhow::{bail, Context, Result};
 use aethershift_protocol::{
-    call, Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats,
+    call, Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats, WindowPolicy,
 };
 
 /// Send a request to the daemon at `socket_path` with friendly error handling
@@ -29,7 +29,7 @@ pub async fn execute_command(
     socket_path: &Path,
     cmd: crate::cli::Command,
 ) -> Result<()> {
-    use crate::cli::{Command, ProfileCommand};
+    use crate::cli::{Command, ProfileCommand, WindowModeAction, parse_window_policy};
 
 
     match cmd {
@@ -52,6 +52,25 @@ pub async fn execute_command(
         Command::Restore => {
             let resp = send_daemon_request(socket_path, &Request::Restore).await?;
             handle_simple_response(resp)?;
+        }
+        Command::WindowMode(args) => {
+            let is_json = args.is_json();
+            match args.action {
+                Some(WindowModeAction::Set { policy, .. }) => {
+                    let parsed_policy = parse_window_policy(&policy)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    let req = Request::WindowMode {
+                        policy: Some(parsed_policy),
+                    };
+                    let resp = send_daemon_request(socket_path, &req).await?;
+                    handle_window_mode_set_response(resp, parsed_policy, is_json)?;
+                }
+                Some(WindowModeAction::Status { .. }) | None => {
+                    let req = Request::WindowMode { policy: None };
+                    let resp = send_daemon_request(socket_path, &req).await?;
+                    handle_window_mode_status_response(socket_path, resp, is_json).await?;
+                }
+            }
         }
         Command::Snap { layout } => {
             let snap_layout = SnapLayout::from_str(&layout)
@@ -141,6 +160,18 @@ pub async fn execute_command(
     Ok(())
 }
 
+pub fn format_status_text(status: &StatusInfo) -> String {
+    let uptime_str = format_duration(status.uptime_secs);
+    format!(
+        "AetherShift Daemon Status\n========================\n  Active Profile:   {}\n  Window Policy:    {}\n  Active Overlays:  {}\n  Daemon Uptime:    {}\n  Daemon Version:   v{}",
+        status.active_profile,
+        status.window_policy.as_str(),
+        status.overlays_count,
+        uptime_str,
+        status.version
+    )
+}
+
 fn handle_status_response(resp: Response, json_output: bool) -> Result<()> {
     match resp {
         Response::Success { message: _, data } => {
@@ -149,13 +180,7 @@ fn handle_status_response(resp: Response, json_output: bool) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&data_val)?);
             } else {
                 let status: StatusInfo = serde_json::from_value(data_val)?;
-                let uptime_str = format_duration(status.uptime_secs);
-                println!("AetherShift Daemon Status");
-                println!("========================");
-                println!("  Active Profile:   {}", status.active_profile);
-                println!("  Active Overlays:  {}", status.overlays_count);
-                println!("  Daemon Uptime:    {}", uptime_str);
-                println!("  Daemon Version:   v{}", status.version);
+                println!("{}", format_status_text(&status));
             }
             Ok(())
         }
@@ -183,7 +208,7 @@ fn handle_list_response(resp: Response, json_output: bool) -> Result<()> {
             } else {
                 let profiles: Vec<ProfileInfoItem> = serde_json::from_value(data_val)?;
                 println!("Available Profiles:");
-                println!("{:<15} {:<10} {:<10} {}", "PROFILE", "BINDINGS", "STATUS", "DESCRIPTION");
+                println!("{:<15} {:<10} {:<10} DESCRIPTION", "PROFILE", "BINDINGS", "STATUS");
                 println!("{:-<15} {:-<10} {:-<10} {:-<35}", "", "", "", "");
                 for p in profiles {
                     let status = if p.is_active { "* active" } else { "" };
@@ -302,5 +327,139 @@ fn format_duration(secs: u64) -> String {
         format!("{mins}m {s}s")
     } else {
         format!("{s}s")
+    }
+}
+
+fn extract_policy_string(val: &serde_json::Value) -> Option<String> {
+    if let Some(s) = val.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(obj) = val.as_object() {
+        if let Some(p) = obj.get("policy").and_then(|v| v.as_str()) {
+            return Some(p.to_string());
+        }
+        if let Some(p) = obj.get("window_policy").and_then(|v| v.as_str()) {
+            return Some(p.to_string());
+        }
+        if let Some(p) = obj.get("mode").and_then(|v| v.as_str()) {
+            return Some(p.to_string());
+        }
+    }
+    if let Ok(wp) = serde_json::from_value::<WindowPolicy>(val.clone()) {
+        return Some(wp.as_str().to_string());
+    }
+    None
+}
+
+fn extract_policy_from_str(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+    for candidate in &["floating", "tiled", "omarchy", "follow-profile"] {
+        if lower.contains(candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    if lower.contains("follow_profile") {
+        return Some("follow-profile".to_string());
+    }
+    None
+}
+
+async fn handle_window_mode_status_response(
+    socket_path: &Path,
+    resp: Response,
+    json_output: bool,
+) -> Result<()> {
+    match resp {
+        Response::Success { message, data } => {
+            let policy_opt = data.as_ref().and_then(extract_policy_string);
+
+            let policy = if let Some(p) = policy_opt {
+                p
+            } else if let Some(p) = extract_policy_from_str(&message) {
+                p
+            } else {
+                // Query Request::Status as reliable fallback to retrieve the active window policy
+                let status_resp = send_daemon_request(socket_path, &Request::Status).await?;
+                match status_resp {
+                    Response::Success { data: Some(val), .. } => {
+                        let status: StatusInfo = serde_json::from_value(val)?;
+                        status.window_policy.as_str().to_string()
+                    }
+                    _ => "omarchy".to_string(),
+                }
+            };
+
+            if json_output {
+                let json_val = if let Some(ref val) = data {
+                    if val.is_object() {
+                        val.clone()
+                    } else {
+                        serde_json::json!({
+                            "policy": policy,
+                            "window_policy": policy,
+                        })
+                    }
+                } else {
+                    serde_json::json!({
+                        "policy": policy,
+                        "window_policy": policy,
+                    })
+                };
+                println!("{}", serde_json::to_string_pretty(&json_val)?);
+            } else {
+                println!("Window Policy: {}", policy);
+            }
+            Ok(())
+        }
+        Response::Error { code, message } => {
+            bail!("Daemon returned error [{code}]: {message}");
+        }
+        _ => Ok(()),
+    }
+}
+
+fn handle_window_mode_set_response(
+    resp: Response,
+    policy: WindowPolicy,
+    json_output: bool,
+) -> Result<()> {
+    match resp {
+        Response::Success { message, data } => {
+            let display_msg = if message == "Request processed (no-op)" || message.is_empty() {
+                format!("Window policy set to '{}'", policy.as_str())
+            } else {
+                message
+            };
+
+            if json_output {
+                let json_val = if let Some(ref val) = data {
+                    if val.is_object() {
+                        val.clone()
+                    } else {
+                        serde_json::json!({
+                            "status": "success",
+                            "policy": policy.as_str(),
+                            "window_policy": policy.as_str(),
+                            "message": display_msg,
+                        })
+                    }
+                } else {
+                    serde_json::json!({
+                        "status": "success",
+                        "policy": policy.as_str(),
+                        "window_policy": policy.as_str(),
+                        "message": display_msg,
+                    })
+                };
+                println!("{}", serde_json::to_string_pretty(&json_val)?);
+            } else {
+                println!("{display_msg}");
+            }
+            Ok(())
+        }
+        Response::Error { code, message } => {
+            bail!("Daemon returned error [{code}]: {message}");
+        }
+        _ => Ok(()),
     }
 }

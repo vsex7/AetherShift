@@ -217,6 +217,39 @@ pub enum Action {
 }
 
 impl Action {
+    /// Stable, human-readable action identifier used by cheat sheets and diagnostics.
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::CloseWindow => "close_window".to_string(),
+            Self::SnapLeft => "snap_left".to_string(),
+            Self::SnapRight => "snap_right".to_string(),
+            Self::Maximize => "maximize".to_string(),
+            Self::Restore => "restore".to_string(),
+            Self::FloatToggle => "float_toggle".to_string(),
+            Self::Fullscreen => "fullscreen".to_string(),
+            Self::WorkspaceNext => "workspace_next".to_string(),
+            Self::WorkspacePrev => "workspace_prev".to_string(),
+            Self::CycleWindowNext => "cycle_window_next".to_string(),
+            Self::CycleWindowPrev => "cycle_window_prev".to_string(),
+            Self::MoveToWorkspaceNext => "move_to_workspace_next".to_string(),
+            Self::MoveToWorkspacePrev => "move_to_workspace_prev".to_string(),
+            Self::ToggleSpecialWorkspace(name) => match name {
+                Some(name) => format!("special_workspace:{name}"),
+                None => "special_workspace".to_string(),
+            },
+            Self::ToggleLauncher(_) => "launcher".to_string(),
+            Self::Exec(cmd) => format!("exec:{cmd}"),
+            Self::Plugin(id) => format!("plugin:{id}"),
+            Self::Custom { dispatcher, args } => {
+                if args.is_empty() {
+                    dispatcher.clone()
+                } else {
+                    format!("{dispatcher}:{args}")
+                }
+            }
+        }
+    }
+
     /// Return the Hyprland dispatcher name and arguments for this action
     pub fn to_hyprland_dispatcher(&self) -> (String, String) {
         match self {

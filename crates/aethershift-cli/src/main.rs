@@ -17,8 +17,11 @@ async fn main() -> anyhow::Result<()> {
 
     let socket_path = cli.resolved_socket_path();
 
-    if let Err(_e) = execute_command(&socket_path, cli.command).await {
-        // Error was already printed with friendly guidance
+    if let Err(e) = execute_command(&socket_path, cli.command).await {
+        // If the error was not already printed with friendly guidance, print it
+        if !e.to_string().contains("Daemon connection failed") {
+            eprintln!("Error: {e}");
+        }
         std::process::exit(1);
     }
 

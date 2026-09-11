@@ -24,6 +24,7 @@ name = "aethershift-core"
 version = "0.1.0"
 dependencies = [
  "aethershift-hyprland",
+ "aethershift-protocol",
  "anyhow",
  "async-trait",
  "serde",

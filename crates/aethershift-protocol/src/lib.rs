@@ -12,5 +12,5 @@ pub use path::{default_socket_path, DEFAULT_SOCKET_NAME};
 pub use types::{
     ConflictPolicy, DiagnosticCheck, DiagnosticStatus, DoctorReport, Event, HistoryEntry, MetricsFormat,
     MetricsReport, PluginInfo, PluginPermissionScope, Recommendation, Request, Response, SnapLayout, StatusInfo,
-    UsageStats, WindowPolicy,
+    UsageStats, WindowPolicy, BindingInfo, LayoutFeedback,
 };

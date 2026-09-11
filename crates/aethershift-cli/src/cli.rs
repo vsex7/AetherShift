@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
-use aethershift_protocol::default_socket_path;
+use aethershift_protocol::{default_socket_path, WindowPolicy};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -59,6 +59,10 @@ pub enum Command {
 
     /// Restore baseline bindings (unload all overlays)
     Restore,
+
+    /// Query or set the window paradigm mode policy
+    #[command(name = "window-mode", visible_alias = "window")]
+    WindowMode(WindowModeArgs),
 
     /// Snap active window into a high-precision geometry layout
     Snap {
@@ -165,4 +169,59 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub no_notify: bool,
 
+}
+
+#[derive(Debug, Args, Clone, PartialEq, Eq)]
+pub struct WindowModeArgs {
+    #[command(subcommand)]
+    pub action: Option<WindowModeAction>,
+
+    /// Output in JSON format
+    #[arg(long)]
+    pub json: bool,
+}
+
+impl WindowModeArgs {
+    pub fn is_json(&self) -> bool {
+        self.json
+            || match &self.action {
+                Some(WindowModeAction::Set { json, .. }) => *json,
+                Some(WindowModeAction::Status { json }) => *json,
+                None => false,
+            }
+    }
+}
+
+#[derive(Debug, Subcommand, Clone, PartialEq, Eq)]
+pub enum WindowModeAction {
+    /// Set the active window paradigm policy
+    Set {
+        /// Policy name: floating, tiled, omarchy, follow-profile
+        policy: String,
+
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Query the current window paradigm policy
+    #[command(alias = "get")]
+    Status {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+pub fn parse_window_policy(s: &str) -> Result<WindowPolicy, String> {
+    match s.trim().to_lowercase().replace('_', "-").as_str() {
+        "omarchy" => Ok(WindowPolicy::Omarchy),
+        "tiled" => Ok(WindowPolicy::Tiled),
+        "floating" => Ok(WindowPolicy::Floating),
+        "follow-profile" | "follow" => Ok(WindowPolicy::FollowProfile),
+        _ => Err(format!(
+            "Invalid window policy: '{}'. Available policies: omarchy, tiled, floating, follow-profile",
+            s
+        )),
+    }
 }

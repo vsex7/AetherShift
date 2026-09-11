@@ -6,7 +6,7 @@ window_policy = "floating"
 
 [[bindings]]
 key_combo = "SUPER + Q"
-description = "Quit active window"
+description = "Close active window"
 [bindings.action]
 type = "close_window"
 
@@ -47,28 +47,32 @@ description = "Next workspace"
 type = "workspace_next"
 
 [[bindings]]
-key_combo = "SUPER + LEFT"
+key_combo = "SUPER + CTRL + LEFT"
 description = "Snap active window left"
 [bindings.action]
-type = "snap_left"
+type = "exec"
+arg = "aethershift snap half-left"
 
 [[bindings]]
-key_combo = "SUPER + RIGHT"
+key_combo = "SUPER + CTRL + RIGHT"
 description = "Snap active window right"
 [bindings.action]
-type = "snap_right"
+type = "exec"
+arg = "aethershift snap half-right"
 
 [[bindings]]
 key_combo = "SUPER + UP"
 description = "Maximize active window"
 [bindings.action]
-type = "maximize"
+type = "exec"
+arg = "aethershift snap maximize"
 
 [[bindings]]
 key_combo = "SUPER + DOWN"
 description = "Restore active window"
 [bindings.action]
-type = "restore"
+type = "exec"
+arg = "aethershift snap restore"
 
 [[bindings]]
 key_combo = "SUPER + TAB"
@@ -90,7 +94,7 @@ type = "exec"
 arg = "omarchy-system-lock"
 
 [[bindings]]
-key_combo = "PRINT"
+key_combo = "SUPER + SHIFT + 4"
 description = "Take screenshot"
 [bindings.action]
 type = "exec"

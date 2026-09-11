@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+aethershift-protocol = { path = "../aethershift-protocol" }
 async-trait.workspace = true
 aethershift-hyprland = { path = "../aethershift-hyprland" }
 serde.workspace = true

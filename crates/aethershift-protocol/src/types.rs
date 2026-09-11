@@ -281,6 +281,8 @@ pub enum Request {
     // Window layout
     ApplyLayout {
         layout: SnapLayout,
+        #[serde(default)]
+        preview: bool,
     },
     MoveWindowToMonitor {
         direction: String,
@@ -409,6 +411,28 @@ pub struct HistoryEntry {
     pub error: Option<String>,
 }
 
+/// A single user-facing keybinding row for cheat-sheet clients.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BindingInfo {
+    pub key_combo: String,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Structured result of a snap or preview operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayoutFeedback {
+    pub layout: String,
+    pub preview: bool,
+    pub monitor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<[i32; 4]>,
+    pub to: [i32; 4],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 impl StatusInfo {
     pub fn new(
         active_profile: impl Into<String>,
@@ -450,10 +474,11 @@ mod tests {
             (Request::Restore, r#"{"type":"Restore"}"#),
             (Request::Shutdown, r#"{"type":"Shutdown"}"#),
             (
-                Request::ApplyLayout {
-                    layout: SnapLayout::HalfLeft,
-                },
-                r#"{"type":"ApplyLayout","payload":{"layout":"half-left"}}"#,
+            Request::ApplyLayout {
+                layout: SnapLayout::HalfLeft,
+                preview: false,
+            },
+                r#"{"type":"ApplyLayout","payload":{"layout":"half-left","preview":false}}"#,
             ),
             (
                 Request::MoveWindowToMonitor {

@@ -20,25 +20,29 @@ type = "close_window"
 key_combo = "SUPER + LEFT"
 description = "Snap active window left"
 [bindings.action]
-type = "snap_left"
+type = "exec"
+arg = "aethershift snap half-left"
 
 [[bindings]]
 key_combo = "SUPER + RIGHT"
 description = "Snap active window right"
 [bindings.action]
-type = "snap_right"
+type = "exec"
+arg = "aethershift snap half-right"
 
 [[bindings]]
 key_combo = "SUPER + UP"
 description = "Maximize active window"
 [bindings.action]
-type = "maximize"
+type = "exec"
+arg = "aethershift snap maximize"
 
 [[bindings]]
 key_combo = "SUPER + DOWN"
 description = "Restore active window"
 [bindings.action]
-type = "restore"
+type = "exec"
+arg = "aethershift snap restore"
 
 [[bindings]]
 key_combo = "CTRL + ALT + LEFT"

@@ -11,6 +11,8 @@ use crate::conflict::{
 use crate::error::CoreError;
 use crate::profile::Profile;
 use crate::profile_metadata::ConflictPolicy;
+use aethershift_protocol::{HistoryEntry, WindowPolicy};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A concrete execution plan detailing what to unbind and what to bind
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -82,6 +84,9 @@ pub struct StateManager {
     last_conflict_report: ConflictReport,
     total_skipped_conflicts: usize,
     total_forced_overrides: usize,
+    window_policy: WindowPolicy,
+    switch_history: Vec<HistoryEntry>,
+    next_history_sequence: u64,
 }
 
 impl Default for StateManager {
@@ -102,6 +107,9 @@ impl StateManager {
             last_conflict_report: ConflictReport::default(),
             total_skipped_conflicts: 0,
             total_forced_overrides: 0,
+            window_policy: WindowPolicy::Omarchy,
+            switch_history: Vec::new(),
+            next_history_sequence: 1,
         };
         mgr.load_embedded_presets();
         mgr.load_embedded_hybrid();
@@ -207,6 +215,50 @@ impl StateManager {
 
     pub fn total_forced_overrides(&self) -> usize {
         self.total_forced_overrides
+    }
+
+    pub fn window_policy(&self) -> WindowPolicy {
+        self.window_policy
+    }
+
+    pub fn set_window_policy(&mut self, policy: WindowPolicy) {
+        self.window_policy = policy;
+    }
+
+    pub fn record_switch_history(
+        &mut self,
+        profile: &str,
+        succeeded: bool,
+        duration_us: u128,
+        applied: usize,
+        skipped: usize,
+        forced: usize,
+        error: Option<String>,
+    ) {
+        let sequence = self.next_history_sequence;
+        self.next_history_sequence += 1;
+        self.switch_history.push(HistoryEntry {
+            sequence,
+            unix_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|value| value.as_millis())
+                .unwrap_or_default(),
+            profile: profile.to_string(),
+            succeeded,
+            duration_us,
+            applied,
+            skipped,
+            forced,
+            error,
+        });
+        if self.switch_history.len() > 256 {
+            self.switch_history.remove(0);
+        }
+    }
+
+    pub fn switch_history(&self, limit: Option<usize>) -> Vec<HistoryEntry> {
+        let count = limit.unwrap_or(20).min(self.switch_history.len());
+        self.switch_history.iter().rev().take(count).cloned().collect()
     }
 
     /// List all available profiles and their metadata
@@ -687,7 +739,7 @@ mod tests {
         let gaming = sm.get_profile("gaming").unwrap();
         assert_eq!(gaming.name, "gaming");
         assert_eq!(gaming.description, "Gaming profile");
-        assert_eq!(gaming.bindings.len(), 16);
+        assert_eq!(gaming.bindings.len(), 17);
 
         // Duplicate name fails
         assert!(sm.create_profile("gaming", None, None).is_err());
