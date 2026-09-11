@@ -308,7 +308,7 @@ impl AetherDaemon {
                                                     match policy {
                                                         aethershift_protocol::WindowPolicy::Tiled => {
                                                             let cmd = format!(
-                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"unset\", address = \"{}\" }}))",
+                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"disable\", address = \"{}\" }}))",
                                                                 address
                                                             );
                                                             if let Err(e) = event_client.eval_lua(&cmd).await {
@@ -317,7 +317,7 @@ impl AetherDaemon {
                                                         }
                                                         aethershift_protocol::WindowPolicy::Floating => {
                                                             let cmd = format!(
-                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"set\", address = \"{}\" }}))",
+                                                                "hl.dispatch(hl.dsp.window.float({{ action = \"enable\", address = \"{}\" }}))",
                                                                 address
                                                             );
                                                             if let Err(e) = event_client.eval_lua(&cmd).await {
@@ -329,7 +329,7 @@ impl AetherDaemon {
                                                                 let st = event_state.lock().await;
                                                                 st.active_profile_name() == "macos"
                                                             };
-                                                            let action = if is_macos { "set" } else { "unset" };
+                                                            let action = if is_macos { "enable" } else { "disable" };
                                                             let cmd = format!(
                                                                 "hl.dispatch(hl.dsp.window.float({{ action = \"{}\", address = \"{}\" }}))",
                                                                 action, address
@@ -1052,6 +1052,38 @@ impl AetherDaemon {
                     LayoutEngine::compute_geometry(core_layout, work_rect)
                 };
 
+                if preview {
+                    let message = format!(
+                        "Previewed layout '{}' on monitor '{}': [{}, {}, {}, {}]",
+                        layout.as_str(),
+                        mon.name,
+                        target_rect.x,
+                        target_rect.y,
+                        target_rect.width,
+                        target_rect.height
+                    );
+                    let feedback = LayoutFeedback {
+                        layout: layout.as_str().to_string(),
+                        preview: true,
+                        monitor: mon.name.clone(),
+                        from: Some([
+                            active_win.at.0,
+                            active_win.at.1,
+                            active_win.size.0,
+                            active_win.size.1,
+                        ]),
+                        to: [
+                            target_rect.x,
+                            target_rect.y,
+                            target_rect.width,
+                            target_rect.height,
+                        ],
+                        message: Some(message.clone()),
+                    };
+                    return Response::ok_with_data(message, &feedback)
+                        .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()));
+                }
+
                 match client
                     .apply_window_rect(
                         &active_win.address,
@@ -1064,9 +1096,8 @@ impl AetherDaemon {
                     .await
                 {
                     Ok(()) => {
-                        let action = if preview { "previewed" } else { "Applied" };
                         let message = format!(
-                            "{action} layout '{}' on monitor '{}': [{}, {}, {}, {}]",
+                            "Applied layout '{}' on monitor '{}': [{}, {}, {}, {}]",
                             layout.as_str(),
                             mon.name,
                             target_rect.x,
@@ -1076,7 +1107,7 @@ impl AetherDaemon {
                         );
                         let feedback = LayoutFeedback {
                             layout: layout.as_str().to_string(),
-                            preview,
+                            preview: false,
                             monitor: mon.name.clone(),
                             from: Some([
                                 active_win.at.0,
@@ -1092,11 +1123,9 @@ impl AetherDaemon {
                             ],
                             message: Some(message.clone()),
                         };
-                        if !preview {
-                            let action_name = format!("snap_{}", layout.as_str());
-                            stats.lock().await.record_action(&action_name);
-                            send_notification("AetherShift", &message, false, disabled);
-                        }
+                        let action_name = format!("snap_{}", layout.as_str());
+                        stats.lock().await.record_action(&action_name);
+                        send_notification("AetherShift", &message, false, disabled);
                         Response::ok_with_data(message, &feedback)
                             .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
                     }
@@ -1237,7 +1266,10 @@ impl AetherDaemon {
                 match res {
                     Ok(()) => {
                         let msg = if is_active {
-                            format!("Active profile '{}' restored to native and deleted successfully", profile)
+                            format!(
+                                "Active profile '{}' restored to native and deleted successfully",
+                                profile
+                            )
                         } else {
                             format!("Profile '{}' deleted successfully", profile)
                         };

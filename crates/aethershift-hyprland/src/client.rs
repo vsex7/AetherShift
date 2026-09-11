@@ -197,7 +197,7 @@ impl HyprlandClient {
 
         if set_floating {
             let float_lua = format!(
-                "hl.dispatch(hl.dsp.window.float({{ action = \"set\", address = {} }}))",
+                "hl.dispatch(hl.dsp.window.float({{ action = \"enable\", address = {} }}))",
                 addr_quoted
             );
             let _ = self.eval_lua(&float_lua).await?;

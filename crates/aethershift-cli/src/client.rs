@@ -118,7 +118,9 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
             ProfileCommand::Load { path } => {
                 let toml_str = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read profile from {}", path.display()))?;
-                let resp = send_daemon_request(socket_path, &Request::UpsertProfile { toml: toml_str }).await?;
+                let resp =
+                    send_daemon_request(socket_path, &Request::UpsertProfile { toml: toml_str })
+                        .await?;
                 handle_simple_response(resp)?;
             }
             ProfileCommand::SaveCurrent { name, desc } => {
@@ -198,7 +200,12 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
         }
         Command::Settings => {
             let status = std::process::Command::new("omarchy-shell")
-                .args(["shell", "summon", "omarchy.aethershift", "{\"view\":\"settings\"}"])
+                .args([
+                    "shell",
+                    "summon",
+                    "omarchy.aethershift",
+                    "{\"view\":\"settings\"}",
+                ])
                 .status();
             if let Ok(s) = status {
                 if s.success() {
@@ -212,7 +219,12 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
         }
         Command::Overview => {
             let status = std::process::Command::new("omarchy-shell")
-                .args(["shell", "summon", "omarchy.aethershift", "{\"view\":\"overview\"}"])
+                .args([
+                    "shell",
+                    "summon",
+                    "omarchy.aethershift",
+                    "{\"view\":\"overview\"}",
+                ])
                 .status();
             if let Ok(s) = status {
                 if s.success() {
@@ -230,7 +242,8 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
                 .context("TUI execution failed")?;
         }
         Command::History { limit, json, .. } => {
-            let resp = send_daemon_request(socket_path, &Request::History { limit: Some(limit) }).await?;
+            let resp =
+                send_daemon_request(socket_path, &Request::History { limit: Some(limit) }).await?;
             handle_history_response(resp, json)?;
         }
         Command::ReloadPresets => {
@@ -283,6 +296,63 @@ struct ProfileBindings {
     bindings: Vec<aethershift_protocol::BindingInfo>,
 }
 
+fn binding_category(action: &str) -> &'static str {
+    let normalized = action.to_ascii_lowercase();
+    if normalized.contains("snap ") || normalized.contains("snap_") {
+        return "Snap & Layout";
+    }
+    match normalized.as_str() {
+        "close_window" | "fullscreen" | "float_toggle" | "cycle_window_next"
+        | "cycle_window_prev" => "Window Management",
+        "snap_left" | "snap_right" | "maximize" | "restore" => "Snap & Layout",
+        "workspace_next"
+        | "workspace_prev"
+        | "move_to_workspace_next"
+        | "move_to_workspace_prev"
+        | "special_workspace" => "Workspaces",
+        _ => "System Actions",
+    }
+}
+
+fn categorized_bindings(
+    bindings: Vec<aethershift_protocol::BindingInfo>,
+) -> Vec<(&'static str, Vec<aethershift_protocol::BindingInfo>)> {
+    let mut categories = vec![
+        ("Window Management", Vec::new()),
+        ("Snap & Layout", Vec::new()),
+        ("Workspaces", Vec::new()),
+        ("System Actions", Vec::new()),
+    ];
+    for binding in bindings {
+        let category = binding_category(&binding.action);
+        categories
+            .iter_mut()
+            .find(|(name, _)| *name == category)
+            .expect("known category")
+            .1
+            .push(binding);
+    }
+    categories
+}
+
+fn filter_bindings(
+    bindings: &mut Vec<aethershift_protocol::BindingInfo>,
+    action_filter: Option<&str>,
+) {
+    if let Some(filter) = action_filter {
+        let needle = filter.to_ascii_lowercase();
+        bindings.retain(|binding| {
+            binding.action.to_ascii_lowercase().contains(&needle)
+                || binding
+                    .description
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .contains(&needle)
+        });
+    }
+}
+
 fn handle_bindings_response(
     resp: Response,
     action_filter: Option<String>,
@@ -293,18 +363,7 @@ fn handle_bindings_response(
             let data = data.unwrap_or(serde_json::Value::Null);
             let profile: ProfileBindings = serde_json::from_value(data)?;
             let mut bindings = profile.bindings;
-            if let Some(filter) = &action_filter {
-                let needle = filter.to_ascii_lowercase();
-                bindings.retain(|binding| {
-                    binding.action.to_ascii_lowercase().contains(&needle)
-                        || binding
-                            .description
-                            .as_deref()
-                            .unwrap_or_default()
-                            .to_ascii_lowercase()
-                            .contains(&needle)
-                });
-            }
+            filter_bindings(&mut bindings, action_filter.as_deref());
             if json_output {
                 let payload = serde_json::json!({
                     "name": profile.name,
@@ -321,15 +380,23 @@ fn handle_bindings_response(
                 if bindings.is_empty() {
                     println!("No matching bindings.");
                 } else {
-                    println!("{:<24} {:<28} DESCRIPTION", "KEY", "ACTION");
-                    println!("{:-<24} {:-<28} {:-<30}", "", "", "");
-                    for binding in bindings {
-                        println!(
-                            "{:<24} {:<28} {}",
-                            binding.key_combo,
-                            binding.action,
-                            binding.description.as_deref().unwrap_or("")
-                        );
+                    for (category, rows) in categorized_bindings(bindings) {
+                        if rows.is_empty() {
+                            continue;
+                        }
+                        println!("{category}");
+                        println!("{:-<category$}", "", category = category.len());
+                        println!("  {:<24} {:<28} DESCRIPTION", "KEY", "ACTION");
+                        println!("  {:-<24} {:-<28} {:-<30}", "", "", "");
+                        for binding in rows {
+                            println!(
+                                "  {:<24} {:<28} {}",
+                                binding.key_combo,
+                                binding.action,
+                                binding.description.as_deref().unwrap_or("")
+                            );
+                        }
+                        println!();
                     }
                 }
             }
@@ -358,6 +425,62 @@ fn handle_status_response(resp: Response, json_output: bool) -> Result<()> {
             bail!("Daemon returned error [{code}]: {message}");
         }
         _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{Cli, Command};
+    use aethershift_protocol::BindingInfo;
+    use clap::Parser;
+
+    fn binding(key: &str, action: &str) -> BindingInfo {
+        BindingInfo {
+            key_combo: key.to_string(),
+            action: action.to_string(),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn cheatsheet_is_a_visible_bindings_alias() {
+        let cli = Cli::try_parse_from(["aethershift", "cheatsheet"]).expect("parse alias");
+        assert!(matches!(cli.command, Command::Bindings { .. }));
+    }
+
+    #[test]
+    fn bindings_are_categorized() {
+        let categories = categorized_bindings(vec![
+            binding("ALT + F4", "close_window"),
+            binding("SUPER + LEFT", "snap_left"),
+            binding("CTRL + ALT + LEFT", "workspace_next"),
+            binding("SUPER + L", "exec:lock"),
+        ]);
+        let names: Vec<_> = categories.iter().map(|(name, _)| *name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "Window Management",
+                "Snap & Layout",
+                "Workspaces",
+                "System Actions"
+            ]
+        );
+        assert_eq!(categories[0].1[0].key_combo, "ALT + F4");
+        assert_eq!(categories[3].1[0].action, "exec:lock");
+    }
+
+    #[test]
+    fn bindings_can_be_filtered_by_action() {
+        let mut rows = vec![
+            binding("ALT + F4", "close_window"),
+            binding("SUPER + LEFT", "snap_left"),
+            binding("SUPER + L", "exec:lock"),
+        ];
+        filter_bindings(&mut rows, Some("snap"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].action, "snap_left");
     }
 }
 
@@ -671,13 +794,25 @@ fn handle_history_response(resp: Response, json_output: bool) -> Result<()> {
                     println!("No switch history recorded yet.");
                 } else {
                     println!("Recent Switch History:");
-                    println!("{:<20} {:<15} {:<10} {:<10} {}", "TIMESTAMP", "PROFILE", "STATUS", "DURATION", "DETAIL");
-                    println!("{:-<20} {:-<15} {:-<10} {:-<10} {:-<25}", "", "", "", "", "");
+                    println!(
+                        "{:<20} {:<15} {:<10} {:<10} {}",
+                        "TIMESTAMP", "PROFILE", "STATUS", "DURATION", "DETAIL"
+                    );
+                    println!(
+                        "{:-<20} {:-<15} {:-<10} {:-<10} {:-<25}",
+                        "", "", "", "", ""
+                    );
                     for e in entries {
                         let status = if e.succeeded { "OK" } else { "FAILED" };
                         let dur = format!("{}µs", e.duration_us);
-                        let detail = format!("applied:{} skipped:{} forced:{}", e.applied, e.skipped, e.forced);
-                        println!("{:<20} {:<15} {:<10} {:<10} {}", e.unix_ms, e.profile, status, dur, detail);
+                        let detail = format!(
+                            "applied:{} skipped:{} forced:{}",
+                            e.applied, e.skipped, e.forced
+                        );
+                        println!(
+                            "{:<20} {:<15} {:<10} {:<10} {}",
+                            e.unix_ms, e.profile, status, dur, detail
+                        );
                     }
                 }
             }

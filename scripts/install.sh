@@ -33,8 +33,15 @@ install -m 644 "${ROOT_DIR}/systemd/aethershift.service" "${SYSTEMD_USER_DIR}/ae
 if command -v systemctl >/dev/null 2>&1; then
     echo "    Reloading systemd user daemon..."
     systemctl --user daemon-reload || true
-    echo "    Enabling and starting aethershift.service..."
-    systemctl --user enable --now aethershift.service || echo "    Notice: Couldn't start service now (perhaps graphical-session is inactive). Service is enabled."
+    echo "    Enabling aethershift.service..."
+    systemctl --user enable aethershift.service || true
+    if systemctl --user is-active --quiet aethershift.service; then
+        echo "    Restarting the active service to load the new binary..."
+        systemctl --user restart aethershift.service
+    else
+        echo "    Starting aethershift.service..."
+        systemctl --user start aethershift.service || echo "    Notice: Couldn't start service now (perhaps graphical-session is inactive). Service is enabled."
+    fi
 fi
 
 echo "==> [5/5] Checking Quickshell plugin integration for Omarchy..."

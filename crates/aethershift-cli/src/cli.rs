@@ -38,6 +38,7 @@ pub enum Command {
     },
 
     /// Show the keybindings in a profile (defaults to the active profile)
+    #[command(visible_alias = "cheatsheet")]
     Bindings {
         /// Optional profile name; omit to use the currently active profile
         profile: Option<String>,
