@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 use std::path::Path;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -88,7 +88,9 @@ pub type ClientStream<S = UnixStream> = ProtocolStream<S, Response, Request>;
 pub type ServerStream<S = UnixStream> = ProtocolStream<S, Request, Response>;
 
 /// Convenience function to read a single `Request` from any length-delimited framed stream.
-pub async fn read_request<S>(framed: &mut Framed<S, LengthDelimitedCodec>) -> Result<Request, ProtocolError>
+pub async fn read_request<S>(
+    framed: &mut Framed<S, LengthDelimitedCodec>,
+) -> Result<Request, ProtocolError>
 where
     S: AsyncRead + Unpin,
 {
@@ -119,7 +121,9 @@ where
 }
 
 /// Convenience function to read a single `Response` from any length-delimited framed stream.
-pub async fn read_response<S>(framed: &mut Framed<S, LengthDelimitedCodec>) -> Result<Response, ProtocolError>
+pub async fn read_response<S>(
+    framed: &mut Framed<S, LengthDelimitedCodec>,
+) -> Result<Response, ProtocolError>
 where
     S: AsyncRead + Unpin,
 {
@@ -199,16 +203,24 @@ mod tests {
         let mut server_framed = Framed::new(server_io, new_length_delimited_codec());
 
         let req = Request::Status;
-        send_request(&mut client_framed, &req).await.expect("send_request");
+        send_request(&mut client_framed, &req)
+            .await
+            .expect("send_request");
 
-        let received_req = read_request(&mut server_framed).await.expect("read_request");
+        let received_req = read_request(&mut server_framed)
+            .await
+            .expect("read_request");
         assert_eq!(received_req, req);
 
         let status_info = StatusInfo::new("nord", 1, 42, "0.1.0");
         let resp = Response::ok_with_data("Status report", &status_info).expect("ok_with_data");
-        send_response(&mut server_framed, &resp).await.expect("send_response");
+        send_response(&mut server_framed, &resp)
+            .await
+            .expect("send_response");
 
-        let received_resp = read_response(&mut client_framed).await.expect("read_response");
+        let received_resp = read_response(&mut client_framed)
+            .await
+            .expect("read_response");
         assert_eq!(received_resp, resp);
     }
 

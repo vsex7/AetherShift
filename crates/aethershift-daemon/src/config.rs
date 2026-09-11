@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use clap::Parser;
 use aethershift_protocol::default_socket_path;
+use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -55,6 +55,9 @@ impl DaemonConfig {
     }
 
     pub fn notifications_disabled(&self) -> bool {
-        self.no_notify || std::env::var("AETHERSHIFT_NO_NOTIFY").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false)
+        self.no_notify
+            || std::env::var("AETHERSHIFT_NO_NOTIFY")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
     }
 }

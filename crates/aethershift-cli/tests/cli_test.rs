@@ -13,7 +13,11 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(5000);
 fn get_temp_sock(name: &str) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
     let rand_val = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-    p.push(format!("aethershift_cli_test_{name}_{}_{}.sock", std::process::id(), rand_val));
+    p.push(format!(
+        "aethershift_cli_test_{name}_{}_{}.sock",
+        std::process::id(),
+        rand_val
+    ));
     p
 }
 
@@ -86,7 +90,14 @@ async fn test_cli_commands_with_daemon() {
     assert!(res_json.is_ok());
 
     // 3. Switch
-    let res = execute_command(&sock, Command::Switch { profile: "windows".to_string(), force: false }).await;
+    let res = execute_command(
+        &sock,
+        Command::Switch {
+            profile: "windows".to_string(),
+            force: false,
+        },
+    )
+    .await;
     assert!(res.is_ok());
 
     // 4. Cycle
@@ -98,60 +109,88 @@ async fn test_cli_commands_with_daemon() {
     assert!(res.is_ok());
 
     // 5b. WindowMode query (status)
-    let res = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-        action: Some(WindowModeAction::Status { json: false }),
-        json: false,
-    })).await;
+    let res = execute_command(
+        &sock,
+        Command::WindowMode(WindowModeArgs {
+            action: Some(WindowModeAction::Status { json: false }),
+            json: false,
+        }),
+    )
+    .await;
     assert!(res.is_ok());
 
-    let res_json = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-        action: Some(WindowModeAction::Status { json: true }),
-        json: false,
-    })).await;
+    let res_json = execute_command(
+        &sock,
+        Command::WindowMode(WindowModeArgs {
+            action: Some(WindowModeAction::Status { json: true }),
+            json: false,
+        }),
+    )
+    .await;
     assert!(res_json.is_ok());
 
     // 5c. WindowMode query (no args)
-    let res = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-        action: None,
-        json: false,
-    })).await;
+    let res = execute_command(
+        &sock,
+        Command::WindowMode(WindowModeArgs {
+            action: None,
+            json: false,
+        }),
+    )
+    .await;
     assert!(res.is_ok());
 
-    let res_json = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-        action: None,
-        json: true,
-    })).await;
+    let res_json = execute_command(
+        &sock,
+        Command::WindowMode(WindowModeArgs {
+            action: None,
+            json: true,
+        }),
+    )
+    .await;
     assert!(res_json.is_ok());
 
     // 5d. WindowMode set policies
     for policy in &["floating", "tiled", "omarchy", "follow-profile"] {
-        let res = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-            action: Some(WindowModeAction::Set {
-                policy: policy.to_string(),
+        let res = execute_command(
+            &sock,
+            Command::WindowMode(WindowModeArgs {
+                action: Some(WindowModeAction::Set {
+                    policy: policy.to_string(),
+                    json: false,
+                }),
                 json: false,
             }),
-            json: false,
-        })).await;
+        )
+        .await;
         assert!(res.is_ok());
 
-        let res_json = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-            action: Some(WindowModeAction::Set {
-                policy: policy.to_string(),
-                json: true,
+        let res_json = execute_command(
+            &sock,
+            Command::WindowMode(WindowModeArgs {
+                action: Some(WindowModeAction::Set {
+                    policy: policy.to_string(),
+                    json: true,
+                }),
+                json: false,
             }),
-            json: false,
-        })).await;
+        )
+        .await;
         assert!(res_json.is_ok());
     }
 
     // 5e. WindowMode invalid policy returns error
-    let res = execute_command(&sock, Command::WindowMode(WindowModeArgs {
-        action: Some(WindowModeAction::Set {
-            policy: "invalid-policy".to_string(),
+    let res = execute_command(
+        &sock,
+        Command::WindowMode(WindowModeArgs {
+            action: Some(WindowModeAction::Set {
+                policy: "invalid-policy".to_string(),
+                json: false,
+            }),
             json: false,
         }),
-        json: false,
-    })).await;
+    )
+    .await;
     assert!(res.is_err());
 
     // 6. Shutdown
@@ -198,7 +237,10 @@ async fn test_window_mode_parsing() {
     let cli = Cli::try_parse_from(["aethershift", "window-mode", "status"]).unwrap();
     match cli.command {
         Command::WindowMode(args) => {
-            assert!(matches!(args.action, Some(WindowModeAction::Status { json: false })));
+            assert!(matches!(
+                args.action,
+                Some(WindowModeAction::Status { json: false })
+            ));
             assert!(!args.is_json());
         }
         _ => panic!("Expected WindowMode command"),
@@ -208,7 +250,10 @@ async fn test_window_mode_parsing() {
     let cli = Cli::try_parse_from(["aethershift", "window-mode", "status", "--json"]).unwrap();
     match cli.command {
         Command::WindowMode(args) => {
-            assert!(matches!(args.action, Some(WindowModeAction::Status { json: true })));
+            assert!(matches!(
+                args.action,
+                Some(WindowModeAction::Status { json: true })
+            ));
             assert!(args.is_json());
         }
         _ => panic!("Expected WindowMode command"),
@@ -231,7 +276,8 @@ async fn test_window_mode_parsing() {
     }
 
     // aethershift window-mode set floating --json
-    let cli = Cli::try_parse_from(["aethershift", "window-mode", "set", "floating", "--json"]).unwrap();
+    let cli =
+        Cli::try_parse_from(["aethershift", "window-mode", "set", "floating", "--json"]).unwrap();
     match cli.command {
         Command::WindowMode(args) => {
             match args.action {
@@ -249,14 +295,12 @@ async fn test_window_mode_parsing() {
     // Short/alias command: aethershift window set tiled
     let cli = Cli::try_parse_from(["aethershift", "window", "set", "tiled"]).unwrap();
     match cli.command {
-        Command::WindowMode(args) => {
-            match args.action {
-                Some(WindowModeAction::Set { policy, .. }) => {
-                    assert_eq!(policy, "tiled");
-                }
-                _ => panic!("Expected Set action"),
+        Command::WindowMode(args) => match args.action {
+            Some(WindowModeAction::Set { policy, .. }) => {
+                assert_eq!(policy, "tiled");
             }
-        }
+            _ => panic!("Expected Set action"),
+        },
         _ => panic!("Expected WindowMode command via window alias"),
     }
 
@@ -274,14 +318,32 @@ fn test_parse_window_policy() {
     use aethershift_cli::cli::parse_window_policy;
     use aethershift_protocol::WindowPolicy;
 
-    assert_eq!(parse_window_policy("floating").unwrap(), WindowPolicy::Floating);
-    assert_eq!(parse_window_policy("Floating").unwrap(), WindowPolicy::Floating);
+    assert_eq!(
+        parse_window_policy("floating").unwrap(),
+        WindowPolicy::Floating
+    );
+    assert_eq!(
+        parse_window_policy("Floating").unwrap(),
+        WindowPolicy::Floating
+    );
     assert_eq!(parse_window_policy("tiled").unwrap(), WindowPolicy::Tiled);
     assert_eq!(parse_window_policy("TILED").unwrap(), WindowPolicy::Tiled);
-    assert_eq!(parse_window_policy("omarchy").unwrap(), WindowPolicy::Omarchy);
-    assert_eq!(parse_window_policy("follow-profile").unwrap(), WindowPolicy::FollowProfile);
-    assert_eq!(parse_window_policy("follow_profile").unwrap(), WindowPolicy::FollowProfile);
-    assert_eq!(parse_window_policy("follow").unwrap(), WindowPolicy::FollowProfile);
+    assert_eq!(
+        parse_window_policy("omarchy").unwrap(),
+        WindowPolicy::Omarchy
+    );
+    assert_eq!(
+        parse_window_policy("follow-profile").unwrap(),
+        WindowPolicy::FollowProfile
+    );
+    assert_eq!(
+        parse_window_policy("follow_profile").unwrap(),
+        WindowPolicy::FollowProfile
+    );
+    assert_eq!(
+        parse_window_policy("follow").unwrap(),
+        WindowPolicy::FollowProfile
+    );
 
     assert!(parse_window_policy("invalid-policy").is_err());
 }

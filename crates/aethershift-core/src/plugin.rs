@@ -82,7 +82,8 @@ impl PluginManifest {
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
         {
-            return Err(self.invalid("plugin id must be 1-64 lowercase ascii characters, digits, '-' or '_'"));
+            return Err(self
+                .invalid("plugin id must be 1-64 lowercase ascii characters, digits, '-' or '_'"));
         }
         if self.version.trim().is_empty() {
             return Err(self.invalid("version cannot be empty"));
@@ -93,9 +94,7 @@ impl PluginManifest {
         if self.timeout_ms == 0 || self.timeout_ms > 60_000 {
             return Err(self.invalid("timeout_ms must be between 1 and 60000"));
         }
-        if self.permissions.contains(&PluginPermissionScope::None)
-            && self.permissions.len() > 1
-        {
+        if self.permissions.contains(&PluginPermissionScope::None) && self.permissions.len() > 1 {
             return Err(self.invalid("'none' cannot be combined with other permission scopes"));
         }
         Ok(())
@@ -143,7 +142,8 @@ impl PluginRegistry {
             match PluginManifest::from_file(&path) {
                 Ok(manifest) => {
                     if self.plugins.contains_key(&manifest.id) {
-                        self.failed.insert(manifest.id.clone(), "duplicate plugin id".to_string());
+                        self.failed
+                            .insert(manifest.id.clone(), "duplicate plugin id".to_string());
                     } else {
                         self.plugins.insert(
                             manifest.id.clone(),
@@ -236,39 +236,44 @@ pub async fn execute_plugin(
             source,
         })?;
 
-    let output = tokio::time::timeout(Duration::from_millis(plugin.manifest.timeout_ms), async move {
-        let mut child = child;
-        let mut stdin = match child.stdin.take() {
-            Some(stdin) => stdin,
-            None => {
-                return Err(CoreError::Validation {
-                    profile: "plugin".to_string(),
-                    message: "plugin stdin unavailable".to_string(),
-                })
-            }
-        };
-        stdin.write_all(&stdin_json).await.map_err(|source| CoreError::Io {
-            path: PathBuf::from("plugin_stdin"),
-            source,
-        })?;
-        stdin.shutdown().await.map_err(|source| CoreError::Io {
-            path: PathBuf::from("plugin_stdin"),
-            source,
-        })?;
-        child
-            .wait_with_output()
-            .await
-            .map_err(|source| CoreError::Io {
-                path: PathBuf::from("plugin"),
+    let output = tokio::time::timeout(
+        Duration::from_millis(plugin.manifest.timeout_ms),
+        async move {
+            let mut child = child;
+            let mut stdin = match child.stdin.take() {
+                Some(stdin) => stdin,
+                None => {
+                    return Err(CoreError::Validation {
+                        profile: "plugin".to_string(),
+                        message: "plugin stdin unavailable".to_string(),
+                    });
+                }
+            };
+            stdin
+                .write_all(&stdin_json)
+                .await
+                .map_err(|source| CoreError::Io {
+                    path: PathBuf::from("plugin_stdin"),
+                    source,
+                })?;
+            stdin.shutdown().await.map_err(|source| CoreError::Io {
+                path: PathBuf::from("plugin_stdin"),
                 source,
-            })
-    })
+            })?;
+            child
+                .wait_with_output()
+                .await
+                .map_err(|source| CoreError::Io {
+                    path: PathBuf::from("plugin"),
+                    source,
+                })
+        },
+    )
     .await
     .map_err(|_| CoreError::Validation {
         profile: plugin.manifest.id.clone(),
         message: format!("plugin timed out after {}ms", plugin.manifest.timeout_ms),
-    })??
-    ;
+    })??;
 
     if output.stdout.len() > MAX_PLUGIN_OUTPUT_BYTES {
         return Err(CoreError::Validation {
@@ -285,11 +290,10 @@ pub async fn execute_plugin(
         });
     }
 
-    let result: PluginActionOutput = serde_json::from_slice(&output.stdout).map_err(|error| {
-        CoreError::Validation {
+    let result: PluginActionOutput =
+        serde_json::from_slice(&output.stdout).map_err(|error| CoreError::Validation {
             profile: plugin.manifest.id.clone(),
             message: format!("invalid plugin JSON output: {error}"),
-        }
-    })?;
+        })?;
     Ok(result)
 }

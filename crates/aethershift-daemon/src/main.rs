@@ -1,5 +1,5 @@
 use clap::Parser;
-use tracing::{error, info, Level};
+use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 use aethershift_daemon::config::DaemonConfig;
@@ -15,13 +15,13 @@ async fn main() -> anyhow::Result<()> {
         _ => Level::TRACE,
     };
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(log_level)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Failed to set tracing subscriber");
+    let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
-    info!("Starting AetherShift daemon (v{})...", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting AetherShift daemon (v{})...",
+        env!("CARGO_PKG_VERSION")
+    );
     let daemon = AetherDaemon::new(config);
 
     if let Err(e) = daemon.run().await {

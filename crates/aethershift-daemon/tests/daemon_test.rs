@@ -1,19 +1,21 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
-use tokio::net::UnixStream;
 use aethershift_core::state::ProfileInfo;
 use aethershift_daemon::config::DaemonConfig;
 use aethershift_daemon::daemon::AetherDaemon;
-use aethershift_protocol::{
-    call, Request, Response, StatusInfo,
-};
+use aethershift_protocol::{Request, Response, StatusInfo, call};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+use tokio::net::UnixStream;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(1000);
 
 fn get_temp_sock(name: &str) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
     let rand_val = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-    p.push(format!("aethershift_test_{name}_{}_{}.sock", std::process::id(), rand_val));
+    p.push(format!(
+        "aethershift_test_{name}_{}_{}.sock",
+        std::process::id(),
+        rand_val
+    ));
     p
 }
 
@@ -62,7 +64,9 @@ async fn test_daemon_lifecycle_and_requests() {
     }
 
     // 2. ListProfiles
-    let resp = call(&sock, &Request::ListProfiles).await.expect("call ListProfiles");
+    let resp = call(&sock, &Request::ListProfiles)
+        .await
+        .expect("call ListProfiles");
     match resp {
         Response::Success { message: _, data } => {
             let profiles: Vec<ProfileInfo> = serde_json::from_value(data.unwrap()).unwrap();
@@ -76,12 +80,18 @@ async fn test_daemon_lifecycle_and_requests() {
     }
 
     // 3. Switch to windows
-    let resp = call(&sock, &Request::Switch { profile: "windows".to_string(), force: false })
-        .await
-        .expect("call Switch windows");
+    let resp = call(
+        &sock,
+        &Request::Switch {
+            profile: "windows".to_string(),
+            force: false,
+        },
+    )
+    .await
+    .expect("call Switch windows");
     match resp {
         Response::Success { message, .. } => {
-            assert!(message.contains("Successfully switched to profile 'windows'"));
+            assert!(message.contains("to profile 'windows'"));
         }
         Response::Error { code, message } => panic!("Unexpected error: {code}: {message}"),
         Response::Event { .. } => panic!("Unexpected event"),
@@ -129,7 +139,9 @@ async fn test_daemon_lifecycle_and_requests() {
     }
 
     // 6. Shutdown
-    let resp = call(&sock, &Request::Shutdown).await.expect("call Shutdown");
+    let resp = call(&sock, &Request::Shutdown)
+        .await
+        .expect("call Shutdown");
     match resp {
         Response::Success { message, .. } => {
             assert!(message.contains("shutting down"));
@@ -141,7 +153,10 @@ async fn test_daemon_lifecycle_and_requests() {
     // Wait for daemon to exit and verify socket cleanup
     let _ = tokio::time::timeout(Duration::from_secs(3), daemon_handle).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!sock_clone.exists(), "Socket file should be removed on shutdown");
+    assert!(
+        !sock_clone.exists(),
+        "Socket file should be removed on shutdown"
+    );
 }
 
 #[tokio::test]
@@ -152,7 +167,7 @@ async fn test_single_instance_check() {
         socket_path: Some(sock.clone()),
         preset_dir: std::path::PathBuf::from("presets"),
         verbose: 0,
-            no_notify: true,
+        no_notify: true,
     };
 
     let daemon1 = AetherDaemon::new(config1);
@@ -260,7 +275,9 @@ async fn test_window_mode_request_handling() {
     }
 
     // 2. Query WindowMode with None -> returns Omarchy
-    let resp = call(&sock, &Request::WindowMode { policy: None }).await.expect("WindowMode None");
+    let resp = call(&sock, &Request::WindowMode { policy: None })
+        .await
+        .expect("WindowMode None");
     match resp {
         Response::Success { data, .. } => {
             let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
@@ -270,7 +287,14 @@ async fn test_window_mode_request_handling() {
     }
 
     // 3. Set WindowMode to Tiled
-    let resp = call(&sock, &Request::WindowMode { policy: Some(WindowPolicy::Tiled) }).await.expect("WindowMode Tiled");
+    let resp = call(
+        &sock,
+        &Request::WindowMode {
+            policy: Some(WindowPolicy::Tiled),
+        },
+    )
+    .await
+    .expect("WindowMode Tiled");
     match resp {
         Response::Success { data, .. } => {
             let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
@@ -290,7 +314,14 @@ async fn test_window_mode_request_handling() {
     }
 
     // 4. Set WindowMode to Floating
-    let resp = call(&sock, &Request::WindowMode { policy: Some(WindowPolicy::Floating) }).await.expect("WindowMode Floating");
+    let resp = call(
+        &sock,
+        &Request::WindowMode {
+            policy: Some(WindowPolicy::Floating),
+        },
+    )
+    .await
+    .expect("WindowMode Floating");
     match resp {
         Response::Success { data, .. } => {
             let policy: WindowPolicy = serde_json::from_value(data.unwrap()).unwrap();
@@ -306,7 +337,9 @@ async fn test_window_mode_request_handling() {
         _ => panic!("Expected restore success"),
     }
 
-    let resp = call(&sock, &Request::Status).await.expect("Status after restore");
+    let resp = call(&sock, &Request::Status)
+        .await
+        .expect("Status after restore");
     match resp {
         Response::Success { data, .. } => {
             let info: StatusInfo = serde_json::from_value(data.unwrap()).unwrap();

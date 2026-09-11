@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use aethershift_hyprland::{HyprKeyBinding, HyprlandClient};
+use async_trait::async_trait;
 
 use crate::error::CoreError;
 use crate::layout::Rect;
@@ -212,7 +212,9 @@ impl CompositorBackend for HyprlandBackend {
         address: Option<&str>,
         direction: &str,
     ) -> Result<(), CoreError> {
-        self.client.move_window_to_monitor(address, direction).await?;
+        self.client
+            .move_window_to_monitor(address, direction)
+            .await?;
         Ok(())
     }
 }
@@ -246,7 +248,11 @@ impl CompositorBackend for SwayBackend {
     }
 
     async fn detect(&self) -> Result<bool, CoreError> {
-        Ok(self.socket_path.as_ref().map(|p| p.exists()).unwrap_or(false))
+        Ok(self
+            .socket_path
+            .as_ref()
+            .map(|p| p.exists())
+            .unwrap_or(false))
     }
 
     async fn health(&self) -> Result<BackendHealth, CoreError> {
@@ -298,7 +304,12 @@ impl From<aethershift_hyprland::HyprlandError> for CoreError {
     }
 }
 
-pub fn hypr_key_binding(keys: &str, action: &str, args: &str, description: Option<&str>) -> HyprKeyBinding {
+pub fn hypr_key_binding(
+    keys: &str,
+    action: &str,
+    args: &str,
+    description: Option<&str>,
+) -> HyprKeyBinding {
     let lua = format!("hl.dsp.{}(\"{}\")", action, args);
     let mut binding = HyprKeyBinding::new(
         keys.to_string(),

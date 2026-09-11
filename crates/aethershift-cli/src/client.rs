@@ -1,9 +1,9 @@
+use aethershift_protocol::{
+    Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats, WindowPolicy, call,
+};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::str::FromStr;
-use anyhow::{bail, Context, Result};
-use aethershift_protocol::{
-    call, Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats, WindowPolicy,
-};
 
 /// Send a request to the daemon at `socket_path` with friendly error handling
 pub async fn send_daemon_request(socket_path: &Path, req: &Request) -> Result<Response> {
@@ -25,12 +25,8 @@ pub async fn send_daemon_request(socket_path: &Path, req: &Request) -> Result<Re
 }
 
 /// Execute command and print friendly output
-pub async fn execute_command(
-    socket_path: &Path,
-    cmd: crate::cli::Command,
-) -> Result<()> {
+pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Result<()> {
     use crate::cli::{Command, ProfileCommand, WindowModeAction, parse_window_policy};
-
 
     match cmd {
         Command::Status { json } => {
@@ -41,8 +37,35 @@ pub async fn execute_command(
             let resp = send_daemon_request(socket_path, &Request::ListProfiles).await?;
             handle_list_response(resp, json)?;
         }
+        Command::Bindings {
+            profile,
+            action,
+            json,
+        } => {
+            let profile = match profile {
+                Some(profile) => profile,
+                None => {
+                    let resp = send_daemon_request(socket_path, &Request::Status).await?;
+                    match resp {
+                        Response::Success {
+                            data: Some(data), ..
+                        } => {
+                            let status: StatusInfo = serde_json::from_value(data)?;
+                            status.active_profile
+                        }
+                        _ => {
+                            bail!("Unable to determine the active profile. Is the daemon running?")
+                        }
+                    }
+                }
+            };
+            let resp =
+                send_daemon_request(socket_path, &Request::GetProfile { name: profile }).await?;
+            handle_bindings_response(resp, action, json)?;
+        }
         Command::Switch { profile, force } => {
-            let resp = send_daemon_request(socket_path, &Request::Switch { profile, force }).await?;
+            let resp =
+                send_daemon_request(socket_path, &Request::Switch { profile, force }).await?;
             handle_simple_response(resp)?;
         }
         Command::Cycle => {
@@ -57,8 +80,8 @@ pub async fn execute_command(
             let is_json = args.is_json();
             match args.action {
                 Some(WindowModeAction::Set { policy, .. }) => {
-                    let parsed_policy = parse_window_policy(&policy)
-                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    let parsed_policy =
+                        parse_window_policy(&policy).map_err(|e| anyhow::anyhow!("{e}"))?;
                     let req = Request::WindowMode {
                         policy: Some(parsed_policy),
                     };
@@ -72,18 +95,37 @@ pub async fn execute_command(
                 }
             }
         }
-        Command::Snap { layout } => {
+        Command::Snap { layout, preview } => {
             let snap_layout = SnapLayout::from_str(&layout)
                 .map_err(|e| anyhow::anyhow!("Invalid snap layout: {}. Available: half-left, half-right, half-top, half-bottom, two-thirds-left, one-third-right, one-third-left, two-thirds-right, center, maximize, restore", e))?;
-            let resp = send_daemon_request(socket_path, &Request::ApplyLayout { layout: snap_layout }).await?;
+            let resp = send_daemon_request(
+                socket_path,
+                &Request::ApplyLayout {
+                    layout: snap_layout,
+                    preview,
+                },
+            )
+            .await?;
             handle_simple_response(resp)?;
         }
         Command::Monitor { direction } => {
-            let resp = send_daemon_request(socket_path, &Request::MoveWindowToMonitor { direction }).await?;
+            let resp =
+                send_daemon_request(socket_path, &Request::MoveWindowToMonitor { direction })
+                    .await?;
             handle_simple_response(resp)?;
         }
         Command::Profile(profile_cmd) => match profile_cmd {
-            ProfileCommand::Create { name, desc, copy_from } => {
+            ProfileCommand::Load { path } => {
+                let toml_str = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read profile from {}", path.display()))?;
+                let resp = send_daemon_request(socket_path, &Request::UpsertProfile { toml: toml_str }).await?;
+                handle_simple_response(resp)?;
+            }
+            ProfileCommand::Create {
+                name,
+                desc,
+                copy_from,
+            } => {
                 let req = Request::CreateProfile {
                     name,
                     description: desc,
@@ -92,7 +134,12 @@ pub async fn execute_command(
                 let resp = send_daemon_request(socket_path, &req).await?;
                 handle_simple_response(resp)?;
             }
-            ProfileCommand::Bind { profile, key, action, desc } => {
+            ProfileCommand::Bind {
+                profile,
+                key,
+                action,
+                desc,
+            } => {
                 let req = Request::UpdateBinding {
                     profile,
                     key_combo: key,
@@ -124,7 +171,13 @@ pub async fn execute_command(
         Command::Stats { json, export } => {
             if let Some(path) = export {
                 let path_str = path.to_string_lossy().to_string();
-                let resp = send_daemon_request(socket_path, &Request::ExportStats { path: Some(path_str) }).await?;
+                let resp = send_daemon_request(
+                    socket_path,
+                    &Request::ExportStats {
+                        path: Some(path_str),
+                    },
+                )
+                .await?;
                 handle_simple_response(resp)?;
             } else {
                 let resp = send_daemon_request(socket_path, &Request::GetStats).await?;
@@ -140,6 +193,15 @@ pub async fn execute_command(
                 .await
                 .context("TUI execution failed")?;
         }
+        Command::History { limit, json, .. } => {
+            let resp = send_daemon_request(socket_path, &Request::History { limit: Some(limit) }).await?;
+            handle_history_response(resp, json)?;
+        }
+        Command::ReloadPresets => {
+            let resp = send_daemon_request(socket_path, &Request::ReloadPresets).await?;
+            handle_simple_response(resp)?;
+        }
+
         Command::Shutdown => {
             let resp = send_daemon_request(socket_path, &Request::Shutdown).await?;
             handle_simple_response(resp)?;
@@ -151,7 +213,10 @@ pub async fn execute_command(
                 verbose: daemon_args.verbose,
                 no_notify: daemon_args.no_notify,
             };
-            println!("Starting AetherShift daemon on {}...", socket_path.display());
+            println!(
+                "Starting AetherShift daemon on {}...",
+                socket_path.display()
+            );
             let daemon = aethershift_daemon::AetherDaemon::new(config);
             daemon.run().await.context("Daemon execution failed")?;
         }
@@ -163,13 +228,82 @@ pub async fn execute_command(
 pub fn format_status_text(status: &StatusInfo) -> String {
     let uptime_str = format_duration(status.uptime_secs);
     format!(
-        "AetherShift Daemon Status\n========================\n  Active Profile:   {}\n  Window Policy:    {}\n  Active Overlays:  {}\n  Daemon Uptime:    {}\n  Daemon Version:   v{}",
+        "AetherShift Daemon Status\n========================\n  Active Profile:   {}\n  Window Policy:    {}\n  Active Overlays:  {}\n  Last Switch:      {}\n  Conflicts:        {} skipped / {} forced\n  Daemon Uptime:    {}\n  Daemon Version:   v{}",
         status.active_profile,
         status.window_policy.as_str(),
         status.overlays_count,
+        format_micros(status.last_switch_duration_us),
+        status.skipped_conflicts,
+        status.forced_overrides,
         uptime_str,
         status.version
     )
+}
+
+#[derive(serde::Deserialize)]
+struct ProfileBindings {
+    name: String,
+    description: String,
+    bindings: Vec<aethershift_protocol::BindingInfo>,
+}
+
+fn handle_bindings_response(
+    resp: Response,
+    action_filter: Option<String>,
+    json_output: bool,
+) -> Result<()> {
+    match resp {
+        Response::Success { message: _, data } => {
+            let data = data.unwrap_or(serde_json::Value::Null);
+            let profile: ProfileBindings = serde_json::from_value(data)?;
+            let mut bindings = profile.bindings;
+            if let Some(filter) = &action_filter {
+                let needle = filter.to_ascii_lowercase();
+                bindings.retain(|binding| {
+                    binding.action.to_ascii_lowercase().contains(&needle)
+                        || binding
+                            .description
+                            .as_deref()
+                            .unwrap_or_default()
+                            .to_ascii_lowercase()
+                            .contains(&needle)
+                });
+            }
+            if json_output {
+                let payload = serde_json::json!({
+                    "name": profile.name,
+                    "description": profile.description,
+                    "bindings": bindings,
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            } else {
+                println!("Bindings for profile '{}'", profile.name);
+                if !profile.description.is_empty() {
+                    println!("{}", profile.description);
+                }
+                println!();
+                if bindings.is_empty() {
+                    println!("No matching bindings.");
+                } else {
+                    println!("{:<24} {:<28} DESCRIPTION", "KEY", "ACTION");
+                    println!("{:-<24} {:-<28} {:-<30}", "", "", "");
+                    for binding in bindings {
+                        println!(
+                            "{:<24} {:<28} {}",
+                            binding.key_combo,
+                            binding.action,
+                            binding.description.as_deref().unwrap_or("")
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
+        Response::Error { code, message } => {
+            bail!("Daemon returned error [{code}]: {message}");
+        }
+        _ => bail!("Unexpected response while retrieving bindings"),
+    }
 }
 
 fn handle_status_response(resp: Response, json_output: bool) -> Result<()> {
@@ -208,7 +342,10 @@ fn handle_list_response(resp: Response, json_output: bool) -> Result<()> {
             } else {
                 let profiles: Vec<ProfileInfoItem> = serde_json::from_value(data_val)?;
                 println!("Available Profiles:");
-                println!("{:<15} {:<10} {:<10} DESCRIPTION", "PROFILE", "BINDINGS", "STATUS");
+                println!(
+                    "{:<15} {:<10} {:<10} DESCRIPTION",
+                    "PROFILE", "BINDINGS", "STATUS"
+                );
                 println!("{:-<15} {:-<10} {:-<10} {:-<35}", "", "", "", "");
                 for p in profiles {
                     let status = if p.is_active { "* active" } else { "" };
@@ -239,7 +376,10 @@ fn handle_stats_response(resp: Response, json_output: bool) -> Result<()> {
                 println!("===========================");
                 println!("  Total Profile Switches:  {}", stats.total_switches);
                 println!("  Total Actions Executed:  {}", stats.total_actions);
-                println!("  Daemon Uptime:           {}", format_duration(stats.uptime_secs));
+                println!(
+                    "  Daemon Uptime:           {}",
+                    format_duration(stats.uptime_secs)
+                );
 
                 if !stats.action_counts.is_empty() {
                     println!();
@@ -277,7 +417,9 @@ fn handle_recommendations_response(resp: Response, json_output: bool) -> Result<
             } else {
                 let recs: Vec<Recommendation> = serde_json::from_value(data_val)?;
                 if recs.is_empty() {
-                    println!("No recommendations at this time. Keep using AetherShift to generate personalized insights!");
+                    println!(
+                        "No recommendations at this time. Keep using AetherShift to generate personalized insights!"
+                    );
                 } else {
                     println!("Personalized Ergonomic Recommendations");
                     println!("=====================================");
@@ -285,7 +427,10 @@ fn handle_recommendations_response(resp: Response, json_output: bool) -> Result<
                         println!("{}. [{}] {}", i + 1, rec.suggestion_type, rec.title);
                         println!("   {}", rec.message);
                         if let Some(ref act) = rec.suggested_action {
-                            println!("   Tip: Run `aethershift profile bind <profile> <key> {}`", act);
+                            println!(
+                                "   Tip: Run `aethershift profile bind <profile> <key> {}`",
+                                act
+                            );
                         }
                         println!();
                     }
@@ -327,6 +472,18 @@ fn format_duration(secs: u64) -> String {
         format!("{mins}m {s}s")
     } else {
         format!("{s}s")
+    }
+}
+
+fn format_micros(micros: u128) -> String {
+    if micros == 0 {
+        "no switches yet".to_string()
+    } else if micros < 1_000 {
+        format!("{micros} us")
+    } else if micros < 1_000_000 {
+        format!("{:.1} ms", micros as f64 / 1_000.0)
+    } else {
+        format!("{:.2} s", micros as f64 / 1_000_000.0)
     }
 }
 
@@ -381,7 +538,9 @@ async fn handle_window_mode_status_response(
                 // Query Request::Status as reliable fallback to retrieve the active window policy
                 let status_resp = send_daemon_request(socket_path, &Request::Status).await?;
                 match status_resp {
-                    Response::Success { data: Some(val), .. } => {
+                    Response::Success {
+                        data: Some(val), ..
+                    } => {
                         let status: StatusInfo = serde_json::from_value(val)?;
                         status.window_policy.as_str().to_string()
                     }
@@ -460,6 +619,35 @@ fn handle_window_mode_set_response(
         Response::Error { code, message } => {
             bail!("Daemon returned error [{code}]: {message}");
         }
+        _ => Ok(()),
+    }
+}
+
+fn handle_history_response(resp: Response, json_output: bool) -> Result<()> {
+    match resp {
+        Response::Success { data, .. } => {
+            let val = data.unwrap_or(serde_json::Value::Null);
+            if json_output {
+                println!("{}", serde_json::to_string_pretty(&val)?);
+            } else {
+                let entries: Vec<aethershift_protocol::HistoryEntry> = serde_json::from_value(val)?;
+                if entries.is_empty() {
+                    println!("No switch history recorded yet.");
+                } else {
+                    println!("Recent Switch History:");
+                    println!("{:<20} {:<15} {:<10} {:<10} {}", "TIMESTAMP", "PROFILE", "STATUS", "DURATION", "DETAIL");
+                    println!("{:-<20} {:-<15} {:-<10} {:-<10} {:-<25}", "", "", "", "", "");
+                    for e in entries {
+                        let status = if e.succeeded { "OK" } else { "FAILED" };
+                        let dur = format!("{}µs", e.duration_us);
+                        let detail = format!("applied:{} skipped:{} forced:{}", e.applied, e.skipped, e.forced);
+                        println!("{:<20} {:<15} {:<10} {:<10} {}", e.unix_ms, e.profile, status, dur, detail);
+                    }
+                }
+            }
+            Ok(())
+        }
+        Response::Error { code, message } => bail!("Daemon error [{code}]: {message}"),
         _ => Ok(()),
     }
 }

@@ -1,14 +1,12 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, BorderType, Borders, List, ListItem, Paragraph, Wrap,
-    },
-    Frame,
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
 
-use crate::app::{App, FocusPanel, ALL_SNAP_LAYOUTS};
+use crate::app::{ALL_SNAP_LAYOUTS, App, FocusPanel};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let size = f.area();
@@ -33,7 +31,9 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         Some(st) => {
             let status_span = Span::styled(
                 " ● ONLINE ",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             );
             let profile_span = Span::styled(
                 format!(" [{}] ", st.active_profile),
@@ -57,18 +57,9 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
                 " ○ OFFLINE (Connecting...) ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             );
-            let profile_span = Span::styled(
-                " [N/A] ",
-                Style::default().fg(Color::DarkGray),
-            );
-            let uptime_span = Span::styled(
-                " Uptime: - ",
-                Style::default().fg(Color::DarkGray),
-            );
-            let overlays_span = Span::styled(
-                " Overlays: 0 ",
-                Style::default().fg(Color::DarkGray),
-            );
+            let profile_span = Span::styled(" [N/A] ", Style::default().fg(Color::DarkGray));
+            let uptime_span = Span::styled(" Uptime: - ", Style::default().fg(Color::DarkGray));
+            let overlays_span = Span::styled(" Overlays: 0 ", Style::default().fg(Color::DarkGray));
             (status_span, profile_span, uptime_span, overlays_span)
         }
     };
@@ -76,7 +67,9 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let title = Line::from(vec![
         Span::styled(
             " AETHERSHIFT CONSOLE ",
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("│"),
         daemon_status_span,
@@ -127,7 +120,12 @@ fn draw_left_panel(f: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .map(|p| {
             let active_marker = if p.is_active {
-                Span::styled(" [ACTIVE]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+                Span::styled(
+                    " [ACTIVE]",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
             } else {
                 Span::raw("")
             };
@@ -238,10 +236,7 @@ fn draw_snap_panel(f: &mut Frame, app: &App, area: Rect) {
                     },
                 )
             } else {
-                (
-                    format!("  {:<20}", name),
-                    Style::default().fg(Color::White),
-                )
+                (format!("  {:<20}", name), Style::default().fg(Color::White))
             }
         };
 
@@ -276,10 +271,16 @@ fn draw_stats_panel(f: &mut Frame, app: &App, area: Rect) {
     if let Some(st) = &app.stats {
         lines.push(Line::from(vec![
             Span::styled("Total Switches: ", Style::default().fg(Color::Cyan)),
-            Span::styled(st.total_switches.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                st.total_switches.to_string(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw("  │  "),
             Span::styled("Total Actions: ", Style::default().fg(Color::Cyan)),
-            Span::styled(st.total_actions.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                st.total_actions.to_string(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
         ]));
 
         if !st.action_counts.is_empty() {
@@ -307,7 +308,9 @@ fn draw_stats_panel(f: &mut Frame, app: &App, area: Rect) {
     // Recommendations Section
     lines.push(Line::from(Span::styled(
         "💡 Suggestions:",
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
     )));
 
     if app.recommendations.is_empty() {
@@ -318,7 +321,10 @@ fn draw_stats_panel(f: &mut Frame, app: &App, area: Rect) {
     } else {
         for rec in app.recommendations.iter().take(2) {
             lines.push(Line::from(vec![
-                Span::styled(format!("• [{}] ", rec.suggestion_type), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    format!("• [{}] ", rec.suggestion_type),
+                    Style::default().fg(Color::Yellow),
+                ),
                 Span::styled(&rec.title, Style::default().add_modifier(Modifier::BOLD)),
             ]));
             lines.push(Line::from(Span::styled(
@@ -328,28 +334,61 @@ fn draw_stats_panel(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 
     f.render_widget(paragraph, area);
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![
-        Span::styled("[Tab]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Tab]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Focus  "),
-        Span::styled("[↑/↓/j/k]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[↑/↓/j/k]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Navigate  "),
-        Span::styled("[Enter]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Enter]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Switch  "),
-        Span::styled("[c]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[c]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Cycle  "),
-        Span::styled("[r]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[r]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Restore  "),
-        Span::styled("[s]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[s]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Snap  "),
-        Span::styled("[q/Esc]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[q/Esc]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Quit"),
     ];
 
@@ -358,7 +397,9 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         let style = if *is_error {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         };
         spans.push(Span::styled(format!("Status: {msg}"), style));
     }

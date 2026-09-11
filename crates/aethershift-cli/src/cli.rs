@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use aethershift_protocol::{WindowPolicy, default_socket_path};
 use clap::{Args, Parser, Subcommand};
-use aethershift_protocol::{default_socket_path, WindowPolicy};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -37,6 +37,18 @@ pub enum Command {
         json: bool,
     },
 
+    /// Show the keybindings in a profile (defaults to the active profile)
+    Bindings {
+        /// Optional profile name; omit to use the currently active profile
+        profile: Option<String>,
+        /// Filter rows by action substring
+        #[arg(short, long)]
+        action: Option<String>,
+        /// Output bindings as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// List all available profiles and indicate the active one
     List {
         /// Output profile list in JSON format
@@ -68,6 +80,10 @@ pub enum Command {
     Snap {
         /// Layout preset (e.g. half-left, half-right, two-thirds-left, one-third-right, center, maximize, restore)
         layout: String,
+
+        /// Show the target geometry without moving the active window
+        #[arg(long)]
+        preview: bool,
     },
 
     /// Move the active window across monitors
@@ -102,6 +118,19 @@ pub enum Command {
     Tui,
 
     /// Request the AetherShift daemon to shut down
+    /// Show recent profile switch history
+    History {
+        /// Maximum number of records to show
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Reload presets from disk without restarting daemon
+    ReloadPresets,
     Shutdown,
 
     /// Launch or manage the AetherShift daemon process
@@ -111,6 +140,11 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum ProfileCommand {
     /// Create a new profile in runtime memory
+    /// Load and validate a profile TOML file into daemon memory
+    Load {
+        /// Path to profile TOML file
+        path: PathBuf,
+    },
     Create {
         /// Name of the new profile
         name: String,
@@ -168,7 +202,6 @@ pub struct DaemonArgs {
     /// Disable desktop notifications
     #[arg(long)]
     pub no_notify: bool,
-
 }
 
 #[derive(Debug, Args, Clone, PartialEq, Eq)]

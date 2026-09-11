@@ -258,7 +258,12 @@ impl StateManager {
 
     pub fn switch_history(&self, limit: Option<usize>) -> Vec<HistoryEntry> {
         let count = limit.unwrap_or(20).min(self.switch_history.len());
-        self.switch_history.iter().rev().take(count).cloned().collect()
+        self.switch_history
+            .iter()
+            .rev()
+            .take(count)
+            .cloned()
+            .collect()
     }
 
     /// List all available profiles and their metadata

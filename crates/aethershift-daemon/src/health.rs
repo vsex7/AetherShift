@@ -2,9 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 
-use aethershift_protocol::{
-    DiagnosticCheck, DiagnosticStatus, DoctorReport, MetricsReport,
-};
+use aethershift_protocol::{DiagnosticCheck, DiagnosticStatus, DoctorReport, MetricsReport};
 
 #[derive(Debug, Clone, Default)]
 pub struct HealthState {
@@ -17,6 +15,8 @@ pub struct HealthState {
     pub failed_switches: u64,
     pub switch_duration_sum_us: u128,
     pub max_switch_duration_us: u128,
+    pub last_switch_duration_us: u128,
+    pub last_switch_succeeded: bool,
     pub skipped_conflicts: usize,
     pub forced_overrides: usize,
     pub plugins_loaded: usize,
@@ -25,11 +25,19 @@ pub struct HealthState {
 }
 
 impl HealthState {
-    pub fn record_switch(&mut self, profile: &str, duration_us: u128, skipped: usize, forced: usize) {
+    pub fn record_switch(
+        &mut self,
+        profile: &str,
+        duration_us: u128,
+        skipped: usize,
+        forced: usize,
+    ) {
         self.active_profile = profile.to_string();
         self.total_switches = self.total_switches.saturating_add(1);
         self.switch_duration_sum_us = self.switch_duration_sum_us.saturating_add(duration_us);
         self.max_switch_duration_us = self.max_switch_duration_us.max(duration_us);
+        self.last_switch_duration_us = duration_us;
+        self.last_switch_succeeded = true;
         self.skipped_conflicts = self.skipped_conflicts.saturating_add(skipped);
         self.forced_overrides = self.forced_overrides.saturating_add(forced);
     }
@@ -41,6 +49,7 @@ impl HealthState {
     pub fn record_failure(&mut self, message: impl Into<String>) {
         self.failed_switches = self.failed_switches.saturating_add(1);
         self.last_error = Some(message.into());
+        self.last_switch_succeeded = false;
     }
 
     pub fn record_connection_open(&mut self) {
@@ -224,7 +233,9 @@ pub fn metrics_text(metrics: &MetricsReport) -> String {
 
 pub fn plugin_dir() -> std::path::PathBuf {
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        std::path::PathBuf::from(dir).join("aethershift").join("plugins")
+        std::path::PathBuf::from(dir)
+            .join("aethershift")
+            .join("plugins")
     } else if let Ok(home) = std::env::var("HOME") {
         std::path::PathBuf::from(home)
             .join(".config")

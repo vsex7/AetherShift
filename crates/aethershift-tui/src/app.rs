@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use aethershift_protocol::{
-    call, default_socket_path, Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats,
+    Recommendation, Request, Response, SnapLayout, StatusInfo, UsageStats, call,
+    default_socket_path,
 };
 use ratatui::widgets::ListState;
 
@@ -225,7 +226,15 @@ impl App {
             None => return,
         };
 
-        match call(&self.socket_path, &Request::Switch { profile: name.clone(), force: false }).await {
+        match call(
+            &self.socket_path,
+            &Request::Switch {
+                profile: name.clone(),
+                force: false,
+            },
+        )
+        .await
+        {
             Ok(Response::Success { message, .. }) => {
                 self.set_info_message(message);
                 self.refresh().await;
@@ -274,7 +283,15 @@ impl App {
 
     pub async fn apply_snap(&mut self) {
         let layout = self.selected_snap();
-        match call(&self.socket_path, &Request::ApplyLayout { layout }).await {
+        match call(
+            &self.socket_path,
+            &Request::ApplyLayout {
+                layout,
+                preview: false,
+            },
+        )
+        .await
+        {
             Ok(Response::Success { message, .. }) => {
                 self.set_info_message(message);
                 self.refresh().await;

@@ -1,10 +1,10 @@
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use std::time::Duration;
 use tempfile::TempDir;
-use ratatui::backend::TestBackend;
-use ratatui::Terminal;
 
 use aethershift_daemon::{AetherDaemon, DaemonConfig};
-use aethershift_tui::app::{App, FocusPanel, ProfileItem, ALL_SNAP_LAYOUTS};
+use aethershift_tui::app::{ALL_SNAP_LAYOUTS, App, FocusPanel, ProfileItem};
 use aethershift_tui::ui;
 
 #[tokio::test]

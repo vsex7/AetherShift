@@ -59,7 +59,9 @@ impl FromStr for SnapLayout {
             "one-third-left" | "1/3-left" => Ok(Self::OneThirdLeft),
             "two-thirds-right" | "2/3-right" => Ok(Self::TwoThirdsRight),
             "three-columns-left" | "3col-left" | "three-col-left" => Ok(Self::ThreeColumnsLeft),
-            "three-columns-center" | "3col-center" | "three-col-center" => Ok(Self::ThreeColumnsCenter),
+            "three-columns-center" | "3col-center" | "three-col-center" => {
+                Ok(Self::ThreeColumnsCenter)
+            }
             "three-columns-right" | "3col-right" | "three-col-right" => Ok(Self::ThreeColumnsRight),
             "maximize" | "max" => Ok(Self::Maximize),
             "center-floating" | "center" | "floating-center" => Ok(Self::CenterFloating),
@@ -361,7 +363,10 @@ impl Response {
         }
     }
 
-    pub fn ok_with_data<T: Serialize>(message: impl Into<String>, data: &T) -> Result<Self, serde_json::Error> {
+    pub fn ok_with_data<T: Serialize>(
+        message: impl Into<String>,
+        data: &T,
+    ) -> Result<Self, serde_json::Error> {
         let value = serde_json::to_value(data)?;
         Ok(Self::Success {
             message: message.into(),
@@ -474,10 +479,10 @@ mod tests {
             (Request::Restore, r#"{"type":"Restore"}"#),
             (Request::Shutdown, r#"{"type":"Shutdown"}"#),
             (
-            Request::ApplyLayout {
-                layout: SnapLayout::HalfLeft,
-                preview: false,
-            },
+                Request::ApplyLayout {
+                    layout: SnapLayout::HalfLeft,
+                    preview: false,
+                },
                 r#"{"type":"ApplyLayout","payload":{"layout":"half-left","preview":false}}"#,
             ),
             (
@@ -523,7 +528,10 @@ mod tests {
                 r#"{"type":"DeleteProfile","payload":{"profile":"custom"}}"#,
             ),
             (Request::GetStats, r#"{"type":"GetStats"}"#),
-            (Request::GetRecommendations, r#"{"type":"GetRecommendations"}"#),
+            (
+                Request::GetRecommendations,
+                r#"{"type":"GetRecommendations"}"#,
+            ),
             (
                 Request::ExportStats {
                     path: Some("/tmp/stats.json".to_string()),
@@ -539,7 +547,8 @@ mod tests {
         for (req, expected_json) in requests {
             let serialized = serde_json::to_string(&req).expect("serialize request");
             assert_eq!(serialized, expected_json);
-            let deserialized: Request = serde_json::from_str(&serialized).expect("deserialize request");
+            let deserialized: Request =
+                serde_json::from_str(&serialized).expect("deserialize request");
             assert_eq!(deserialized, req);
         }
     }
@@ -547,20 +556,68 @@ mod tests {
     #[test]
     fn test_snap_layout_parsing_and_str() {
         let cases = vec![
-            (SnapLayout::HalfLeft, "half-left", &["half-left", "left"][..]),
-            (SnapLayout::HalfRight, "half-right", &["half-right", "right"]),
+            (
+                SnapLayout::HalfLeft,
+                "half-left",
+                &["half-left", "left"][..],
+            ),
+            (
+                SnapLayout::HalfRight,
+                "half-right",
+                &["half-right", "right"],
+            ),
             (SnapLayout::HalfTop, "half-top", &["half-top", "top"]),
-            (SnapLayout::HalfBottom, "half-bottom", &["half-bottom", "bottom"]),
-            (SnapLayout::TwoThirdsLeft, "two-thirds-left", &["two-thirds-left", "2/3-left"]),
-            (SnapLayout::OneThirdRight, "one-third-right", &["one-third-right", "1/3-right"]),
-            (SnapLayout::OneThirdLeft, "one-third-left", &["one-third-left", "1/3-left"]),
-            (SnapLayout::TwoThirdsRight, "two-thirds-right", &["two-thirds-right", "2/3-right"]),
-            (SnapLayout::ThreeColumnsLeft, "three-columns-left", &["three-columns-left", "3col-left", "three-col-left"]),
-            (SnapLayout::ThreeColumnsCenter, "three-columns-center", &["three-columns-center", "3col-center", "three-col-center"]),
-            (SnapLayout::ThreeColumnsRight, "three-columns-right", &["three-columns-right", "3col-right", "three-col-right"]),
+            (
+                SnapLayout::HalfBottom,
+                "half-bottom",
+                &["half-bottom", "bottom"],
+            ),
+            (
+                SnapLayout::TwoThirdsLeft,
+                "two-thirds-left",
+                &["two-thirds-left", "2/3-left"],
+            ),
+            (
+                SnapLayout::OneThirdRight,
+                "one-third-right",
+                &["one-third-right", "1/3-right"],
+            ),
+            (
+                SnapLayout::OneThirdLeft,
+                "one-third-left",
+                &["one-third-left", "1/3-left"],
+            ),
+            (
+                SnapLayout::TwoThirdsRight,
+                "two-thirds-right",
+                &["two-thirds-right", "2/3-right"],
+            ),
+            (
+                SnapLayout::ThreeColumnsLeft,
+                "three-columns-left",
+                &["three-columns-left", "3col-left", "three-col-left"],
+            ),
+            (
+                SnapLayout::ThreeColumnsCenter,
+                "three-columns-center",
+                &["three-columns-center", "3col-center", "three-col-center"],
+            ),
+            (
+                SnapLayout::ThreeColumnsRight,
+                "three-columns-right",
+                &["three-columns-right", "3col-right", "three-col-right"],
+            ),
             (SnapLayout::Maximize, "maximize", &["maximize", "max"]),
-            (SnapLayout::CenterFloating, "center-floating", &["center-floating", "center", "floating-center"]),
-            (SnapLayout::RestoreOriginal, "restore-original", &["restore-original", "restore"]),
+            (
+                SnapLayout::CenterFloating,
+                "center-floating",
+                &["center-floating", "center", "floating-center"],
+            ),
+            (
+                SnapLayout::RestoreOriginal,
+                "restore-original",
+                &["restore-original", "restore"],
+            ),
         ];
 
         for (layout, canonical, aliases) in cases {
@@ -609,7 +666,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&rec).expect("serialize Recommendation");
-        let deserialized: Recommendation = serde_json::from_str(&json).expect("deserialize Recommendation");
+        let deserialized: Recommendation =
+            serde_json::from_str(&json).expect("deserialize Recommendation");
         assert_eq!(deserialized, rec);
     }
 
@@ -617,14 +675,20 @@ mod tests {
     fn test_response_serialization() {
         let resp_ok = Response::ok("Operation successful");
         let json_ok = serde_json::to_string(&resp_ok).expect("serialize resp_ok");
-        assert_eq!(json_ok, r#"{"status":"Success","message":"Operation successful"}"#);
-        let deserialized_ok: Response = serde_json::from_str(&json_ok).expect("deserialize resp_ok");
+        assert_eq!(
+            json_ok,
+            r#"{"status":"Success","message":"Operation successful"}"#
+        );
+        let deserialized_ok: Response =
+            serde_json::from_str(&json_ok).expect("deserialize resp_ok");
         assert_eq!(deserialized_ok, resp_ok);
 
         let status_info = StatusInfo::new("default", 3, 120, "0.1.0");
-        let resp_with_data = Response::ok_with_data("Status retrieved", &status_info).expect("ok_with_data");
+        let resp_with_data =
+            Response::ok_with_data("Status retrieved", &status_info).expect("ok_with_data");
         let json_data = serde_json::to_string(&resp_with_data).expect("serialize resp_with_data");
-        let deserialized_data: Response = serde_json::from_str(&json_data).expect("deserialize resp_with_data");
+        let deserialized_data: Response =
+            serde_json::from_str(&json_data).expect("deserialize resp_with_data");
         assert_eq!(deserialized_data, resp_with_data);
 
         let resp_err = Response::err("PROFILE_NOT_FOUND", "Profile foo does not exist");
@@ -633,7 +697,8 @@ mod tests {
             json_err,
             r#"{"status":"Error","code":"PROFILE_NOT_FOUND","message":"Profile foo does not exist"}"#
         );
-        let deserialized_err: Response = serde_json::from_str(&json_err).expect("deserialize resp_err");
+        let deserialized_err: Response =
+            serde_json::from_str(&json_err).expect("deserialize resp_err");
         assert_eq!(deserialized_err, resp_err);
     }
 

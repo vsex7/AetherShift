@@ -1,48 +1,27 @@
-
-fn send_desktop_notification(summary: &str, body: &str, urgency: &str) {
-    if std::env::var("AETHERSHIFT_NO_NOTIFY").is_ok() {
-        return;
-    }
-    let summary = summary.to_string();
-    let body = body.to_string();
-    let urgency = urgency.to_string();
-    tokio::spawn(async move {
-        let _ = tokio::process::Command::new("notify-send")
-            .arg("-a")
-            .arg("AetherShift")
-            .arg("-i")
-            .arg("preferences-desktop-keyboard-shortcuts")
-            .arg("-u")
-            .arg(&urgency)
-            .arg(&summary)
-            .arg(&body)
-            .output()
-            .await;
-    });
-}
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tracing::{debug, info, warn};
 
 use aethershift_core::binding::{Action, KeyCombo};
 use aethershift_core::layout::{GeometryMemory, LayoutEngine, Rect};
-use aethershift_core::plugin::{execute_plugin, PluginActionInput, PluginRegistry};
+use aethershift_core::plugin::{PluginActionInput, PluginRegistry, execute_plugin};
 use aethershift_core::state::{BaselineBinding, StateManager, SwitchPlan};
 use aethershift_core::stats::StatsEngine;
 use aethershift_hyprland::action::{Direction, HyprAction, WorkspaceTarget};
 use aethershift_hyprland::bind::HyprKeyBinding;
 use aethershift_hyprland::client::HyprlandClient;
 use aethershift_protocol::{
-    ClientStream, MetricsFormat, PluginInfo as WirePluginInfo,
-    PluginPermissionScope, Request, Response, ServerStream, SnapLayout, StatusInfo,
+    BindingInfo, ClientStream, Event, HistoryEntry, LayoutFeedback, MetricsFormat,
+    PluginInfo as WirePluginInfo, PluginPermissionScope, Request, Response, ServerStream,
+    SnapLayout, StatusInfo,
 };
 
 use crate::config::DaemonConfig;
 use crate::error::DaemonError;
-use crate::health::{doctor_report, metrics_text, plugin_dir, DoctorInput, HealthState};
+use crate::health::{DoctorInput, HealthState, doctor_report, metrics_text, plugin_dir};
 use crate::notify::send_notification;
 
 fn get_user_config_dir() -> PathBuf {
@@ -53,6 +32,30 @@ fn get_user_config_dir() -> PathBuf {
     } else {
         PathBuf::from("/tmp/.config")
     }
+}
+
+fn event_kind(event: &Event) -> &'static str {
+    match event {
+        Event::SwitchSucceeded { .. } => "switch-succeeded",
+        Event::SwitchFailed { .. } => "switch-failed",
+        Event::Restored { .. } => "restored",
+        Event::WindowPolicyChanged { .. } => "window-policy-changed",
+        Event::PresetsReloaded { .. } => "presets-reloaded",
+    }
+}
+
+fn event_matches_filters(response: &Response, filters: &[String]) -> bool {
+    if filters.is_empty() {
+        return true;
+    }
+    let Response::Event { event } = response else {
+        return false;
+    };
+    filters.iter().any(|filter| filter == event_kind(event))
+}
+
+fn broadcast_event(events_tx: &broadcast::Sender<Response>, event: Event) {
+    let _ = events_tx.send(Response::Event { event });
 }
 
 pub struct AetherDaemon {
@@ -66,6 +69,7 @@ pub struct AetherDaemon {
     hyprland: Option<HyprlandClient>,
     start_time: Instant,
     shutdown_tx: broadcast::Sender<()>,
+    events_tx: broadcast::Sender<Response>,
 }
 
 fn plugin_to_wire(plugin: &aethershift_core::plugin::LoadedPlugin) -> WirePluginInfo {
@@ -79,8 +83,12 @@ fn plugin_to_wire(plugin: &aethershift_core::plugin::LoadedPlugin) -> WirePlugin
                 PluginPermissionScope::HyprlandDispatch
             }
             aethershift_core::plugin::PluginPermissionScope::Shell => PluginPermissionScope::Shell,
-            aethershift_core::plugin::PluginPermissionScope::Clipboard => PluginPermissionScope::Clipboard,
-            aethershift_core::plugin::PluginPermissionScope::Notification => PluginPermissionScope::Notification,
+            aethershift_core::plugin::PluginPermissionScope::Clipboard => {
+                PluginPermissionScope::Clipboard
+            }
+            aethershift_core::plugin::PluginPermissionScope::Notification => {
+                PluginPermissionScope::Notification
+            }
         })
         .collect();
     WirePluginInfo {
@@ -98,6 +106,7 @@ fn plugin_to_wire(plugin: &aethershift_core::plugin::LoadedPlugin) -> WirePlugin
 impl AetherDaemon {
     pub fn new(config: DaemonConfig) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
+        let (events_tx, _) = broadcast::channel(64);
         Self {
             config,
             state: Arc::new(Mutex::new(StateManager::new())),
@@ -112,6 +121,7 @@ impl AetherDaemon {
             hyprland: None,
             start_time: Instant::now(),
             shutdown_tx,
+            events_tx,
         }
     }
 
@@ -124,18 +134,27 @@ impl AetherDaemon {
     /// Single-instance check and socket acquisition.
     pub async fn bind_socket(socket_path: &Path) -> Result<UnixListener, DaemonError> {
         if socket_path.exists() {
-            debug!("Checking if existing socket at {} is active...", socket_path.display());
+            debug!(
+                "Checking if existing socket at {} is active...",
+                socket_path.display()
+            );
             match UnixStream::connect(socket_path).await {
                 Ok(stream) => {
                     let mut client = ClientStream::new(stream);
                     if client.send(&Request::Status).await.is_ok()
-                        && tokio::time::timeout(std::time::Duration::from_millis(500), client.recv())
-                            .await
-                            .is_ok()
+                        && tokio::time::timeout(
+                            std::time::Duration::from_millis(500),
+                            client.recv(),
+                        )
+                        .await
+                        .is_ok()
                     {
                         return Err(DaemonError::AlreadyRunning(socket_path.to_path_buf()));
                     }
-                    warn!("Removing inactive/stale socket file at {}", socket_path.display());
+                    warn!(
+                        "Removing inactive/stale socket file at {}",
+                        socket_path.display()
+                    );
                     let _ = std::fs::remove_file(socket_path);
                 }
                 Err(_) => {
@@ -168,11 +187,17 @@ impl AetherDaemon {
         if self.hyprland.is_none() {
             match HyprlandClient::discover() {
                 Ok(client) => {
-                    info!("Connected to Hyprland socket at: {}", client.socket_path().display());
+                    info!(
+                        "Connected to Hyprland socket at: {}",
+                        client.socket_path().display()
+                    );
                     self.hyprland = Some(client);
                 }
                 Err(e) => {
-                    warn!("Hyprland discovery warning: {}. Running in standalone/mock mode.", e);
+                    warn!(
+                        "Hyprland discovery warning: {}. Running in standalone/mock mode.",
+                        e
+                    );
                 }
             }
         }
@@ -212,8 +237,16 @@ impl AetherDaemon {
         if self.config.preset_dir.exists() {
             let mut st = self.state.lock().await;
             match st.load_profiles_from_dir(&self.config.preset_dir) {
-                Ok(n) => info!("Loaded {} custom presets from {}", n, self.config.preset_dir.display()),
-                Err(e) => warn!("Failed loading presets from {}: {}", self.config.preset_dir.display(), e),
+                Ok(n) => info!(
+                    "Loaded {} custom presets from {}",
+                    n,
+                    self.config.preset_dir.display()
+                ),
+                Err(e) => warn!(
+                    "Failed loading presets from {}: {}",
+                    self.config.preset_dir.display(),
+                    e
+                ),
             }
         }
 
@@ -235,9 +268,17 @@ impl AetherDaemon {
                     let mut health = self.health.lock().await;
                     health.plugins_loaded = count;
                     health.plugins_failed = failures;
-                    info!("Loaded {} action plugins from {}", count, plugins_dir.display());
+                    info!(
+                        "Loaded {} action plugins from {}",
+                        count,
+                        plugins_dir.display()
+                    );
                 }
-                Err(error) => warn!("Failed loading plugin directory {}: {}", plugins_dir.display(), error),
+                Err(error) => warn!(
+                    "Failed loading plugin directory {}: {}",
+                    plugins_dir.display(),
+                    error
+                ),
             }
         }
 
@@ -322,7 +363,10 @@ impl AetherDaemon {
                         }
                     }
                     Err(e) => {
-                        warn!("Could not connect to Hyprland event socket: {}. Event listening disabled.", e);
+                        warn!(
+                            "Could not connect to Hyprland event socket: {}. Event listening disabled.",
+                            e
+                        );
                     }
                 }
             });
@@ -338,6 +382,7 @@ impl AetherDaemon {
         let hyprland = self.hyprland.clone();
         let start_time = self.start_time;
         let shutdown_tx = self.shutdown_tx.clone();
+        let events_tx = self.events_tx.clone();
         let config = self.config.clone();
 
         loop {
@@ -353,12 +398,30 @@ impl AetherDaemon {
                             let window_policy = window_policy.clone();
                             let hyprland = hyprland.clone();
                             let shutdown_tx = shutdown_tx.clone();
+                            let events_tx = events_tx.clone();
                             let config = config.clone();
 
                             tokio::spawn(async move {
                                 health.lock().await.record_connection_open();
                                 let mut server = ServerStream::new(stream);
+
                                 while let Ok(req) = server.recv().await {
+                                    if let Request::Subscribe { filters } = req {
+                                        let response = Response::ok("Event subscription established");
+                                        if server.send(&response).await.is_err() {
+                                            break;
+                                        }
+                                        let mut events = events_tx.subscribe();
+                                        while let Ok(event) = events.recv().await {
+                                            if event_matches_filters(&event, &filters)
+                                                && server.send(&event).await.is_err()
+                                            {
+                                                break;
+                                            }
+                                        }
+                                        break;
+                                    }
+
                                     let resp = Self::handle_request(
                                         req,
                                         &state,
@@ -370,6 +433,7 @@ impl AetherDaemon {
                                         &hyprland,
                                         start_time,
                                         &shutdown_tx,
+                                        &events_tx,
                                         &config,
                                     ).await;
                                     health.lock().await.record_connection_close();
@@ -416,7 +480,9 @@ impl AetherDaemon {
                 HyprAction::CustomLua(format!("hl.dsp.workspace.toggle_special(\"{}\")", s))
             }
             Action::ToggleLauncher(cmd) => {
-                let cmd_str = cmd.as_deref().unwrap_or("omarchy-launch-walker || rofi -show drun || wofi --show drun");
+                let cmd_str = cmd
+                    .as_deref()
+                    .unwrap_or("omarchy-launch-walker || rofi -show drun || wofi --show drun");
                 HyprAction::Exec(cmd_str.to_string())
             }
             Action::Exec(cmd) => HyprAction::Exec(cmd.clone()),
@@ -424,15 +490,27 @@ impl AetherDaemon {
             Action::Custom { dispatcher, args } => {
                 HyprAction::CustomLua(format!("hl.dsp.{}(\"{}\")", dispatcher, args))
             }
-            Action::CycleWindowNext => HyprAction::CustomLua("hl.dsp.window.cycle_next()".to_string()),
-            Action::CycleWindowPrev => HyprAction::CustomLua("hl.dsp.window.cycle_next({ prev = true })".to_string()),
-            Action::MoveToWorkspaceNext => HyprAction::MoveToWorkspace(WorkspaceTarget::Relative(1)),
-            Action::MoveToWorkspacePrev => HyprAction::MoveToWorkspace(WorkspaceTarget::Relative(-1)),
+            Action::CycleWindowNext => {
+                HyprAction::CustomLua("hl.dsp.window.cycle_next()".to_string())
+            }
+            Action::CycleWindowPrev => {
+                HyprAction::CustomLua("hl.dsp.window.cycle_next({ prev = true })".to_string())
+            }
+            Action::MoveToWorkspaceNext => {
+                HyprAction::MoveToWorkspace(WorkspaceTarget::Relative(1))
+            }
+            Action::MoveToWorkspacePrev => {
+                HyprAction::MoveToWorkspace(WorkspaceTarget::Relative(-1))
+            }
         }
     }
 
     /// Convert KeyCombo and Action to HyprKeyBinding
-    pub fn plan_binding_to_hypr(combo: &KeyCombo, action: &Action, desc: Option<&str>) -> HyprKeyBinding {
+    pub fn plan_binding_to_hypr(
+        combo: &KeyCombo,
+        action: &Action,
+        desc: Option<&str>,
+    ) -> HyprKeyBinding {
         let keys_str = combo.canonical_str();
         let hypr_action = Self::core_action_to_hypr(action);
         let mut binding = HyprKeyBinding::new(keys_str, hypr_action);
@@ -458,7 +536,9 @@ impl AetherDaemon {
             let binds: Vec<HyprKeyBinding> = plan
                 .bind
                 .iter()
-                .map(|b| Self::plan_binding_to_hypr(&b.key_combo, &b.action, b.description.as_deref()))
+                .map(|b| {
+                    Self::plan_binding_to_hypr(&b.key_combo, &b.action, b.description.as_deref())
+                })
                 .collect();
 
             client
@@ -505,10 +585,12 @@ impl AetherDaemon {
             let st = state.lock().await;
             st.last_conflict_report().clone()
         };
-        health
-            .lock()
-            .await
-            .record_switch(&target_name, started.elapsed().as_micros(), report.skipped, report.forced);
+        health.lock().await.record_switch(
+            &target_name,
+            started.elapsed().as_micros(),
+            report.skipped,
+            report.forced,
+        );
         Ok(format!("Cycled to profile '{}'", target_name))
     }
 
@@ -524,6 +606,7 @@ impl AetherDaemon {
         hyprland: &Option<HyprlandClient>,
         start_time: Instant,
         shutdown_tx: &broadcast::Sender<()>,
+        events_tx: &broadcast::Sender<Response>,
         config: &DaemonConfig,
     ) -> Response {
         let disabled = config.notifications_disabled();
@@ -543,8 +626,8 @@ impl AetherDaemon {
                     window_policy: current_policy,
                     skipped_conflicts: health_snapshot.skipped_conflicts,
                     forced_overrides: health_snapshot.forced_overrides,
-                    last_switch_duration_us: health_snapshot.max_switch_duration_us,
-                    last_switch_succeeded: health_snapshot.failed_switches == 0,
+                    last_switch_duration_us: health_snapshot.last_switch_duration_us,
+                    last_switch_succeeded: health_snapshot.last_switch_succeeded,
                     ..status_info
                 };
                 match Response::ok_with_data("Status retrieved", &status_info) {
@@ -571,7 +654,8 @@ impl AetherDaemon {
                     match st.switch_profile(&profile) {
                         Ok(p) => p,
                         Err(e) => {
-                            let err_msg = format!("Failed to switch to profile '{}': {}", profile, e);
+                            let err_msg =
+                                format!("Failed to switch to profile '{}': {}", profile, e);
                             send_notification("AetherShift Error", &err_msg, true, disabled);
                             return Response::err("SWITCH_FAILED", e.to_string());
                         }
@@ -586,21 +670,57 @@ impl AetherDaemon {
                             let st = state.lock().await;
                             st.last_conflict_report().clone()
                         };
+                        state.lock().await.record_switch_history(
+                            &profile,
+                            true,
+                            started.elapsed().as_micros(),
+                            report.applied,
+                            report.skipped,
+                            report.forced,
+                            None,
+                        );
                         health.lock().await.record_switch(
                             &profile,
                             started.elapsed().as_micros(),
                             report.skipped,
                             report.forced,
                         );
-                        let msg = format!("Switched to profile '{}'", profile);
+                        broadcast_event(
+                            events_tx,
+                            Event::SwitchSucceeded {
+                                profile: profile.clone(),
+                                duration_us: started.elapsed().as_micros(),
+                                applied: report.applied,
+                                skipped: report.skipped,
+                                forced: report.forced,
+                            },
+                        );
+                        let msg = format!(
+                            "Switched to profile '{}': {} applied, {} skipped, {} forced",
+                            profile, report.applied, report.skipped, report.forced
+                        );
                         send_notification("AetherShift", &msg, false, disabled);
-                        let msg = format!("Successfully switched to profile '{}'", profile);
-send_desktop_notification("AetherShift Paradigm", &msg, "normal");
-Response::ok(msg)
+                        Response::ok(msg)
                     }
                     Err(e) => {
                         let err_msg = format!("Error applying profile '{}': {}", profile, e);
                         health.lock().await.record_failure(err_msg.clone());
+                        state.lock().await.record_switch_history(
+                            &profile,
+                            false,
+                            started.elapsed().as_micros(),
+                            0,
+                            0,
+                            0,
+                            Some(e.to_string()),
+                        );
+                        broadcast_event(
+                            events_tx,
+                            Event::SwitchFailed {
+                                profile: profile.clone(),
+                                error: e.to_string(),
+                            },
+                        );
                         send_notification("AetherShift Error", &err_msg, true, disabled);
                         Response::err("HYPRLAND_ERROR", e.to_string())
                     }
@@ -630,11 +750,30 @@ Response::ok(msg)
                     Ok(()) => {
                         let started = Instant::now();
                         stats.lock().await.record_switch("native");
-                        health.lock().await.record_restore(started.elapsed().as_micros());
+                        health
+                            .lock()
+                            .await
+                            .record_restore(started.elapsed().as_micros());
+                        state.lock().await.record_switch_history(
+                            "native",
+                            true,
+                            started.elapsed().as_micros(),
+                            0,
+                            0,
+                            0,
+                            None,
+                        );
+                        broadcast_event(
+                            events_tx,
+                            Event::Restored {
+                                duration_us: started.elapsed().as_micros(),
+                                unbound: plan.unbind.len(),
+                                rebound: plan.bind.len(),
+                            },
+                        );
                         let msg = "Restored baseline keybindings";
                         send_notification("AetherShift", msg, false, disabled);
-                        send_desktop_notification("AetherShift Paradigm", "Restored baseline keybindings", "normal");
-Response::ok("Successfully restored baseline keybindings")
+                        Response::ok("Successfully restored baseline keybindings")
                     }
                     Err(e) => {
                         let err_msg = format!("Failed to restore baseline: {}", e);
@@ -668,8 +807,155 @@ Response::ok("Successfully restored baseline keybindings")
                 .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
             }
 
+            Request::SwitchWithPolicy { profile, policy } => {
+                let core_policy = match policy {
+                    aethershift_protocol::ConflictPolicy::Strict => {
+                        aethershift_core::profile_metadata::ConflictPolicy::Strict
+                    }
+                    aethershift_protocol::ConflictPolicy::Force => {
+                        aethershift_core::profile_metadata::ConflictPolicy::Force
+                    }
+                    aethershift_protocol::ConflictPolicy::Smart => {
+                        aethershift_core::profile_metadata::ConflictPolicy::Smart
+                    }
+                };
+                let plan = {
+                    let st = state.lock().await;
+                    match st.switch_profile_with_policy(&profile, core_policy) {
+                        Ok(resolved) => resolved.plan,
+                        Err(e) => {
+                            broadcast_event(
+                                events_tx,
+                                Event::SwitchFailed {
+                                    profile: profile.clone(),
+                                    error: e.to_string(),
+                                },
+                            );
+                            return Response::err("SWITCH_FAILED", e.to_string());
+                        }
+                    }
+                };
+                let started = Instant::now();
+                match Self::execute_plan(&plan, state, hyprland).await {
+                    Ok(()) => {
+                        stats.lock().await.record_switch(&profile);
+                        let report = state.lock().await.last_conflict_report().clone();
+                        state.lock().await.record_switch_history(
+                            &profile,
+                            true,
+                            started.elapsed().as_micros(),
+                            report.applied,
+                            report.skipped,
+                            report.forced,
+                            None,
+                        );
+                        health.lock().await.record_switch(
+                            &profile,
+                            started.elapsed().as_micros(),
+                            report.skipped,
+                            report.forced,
+                        );
+                        broadcast_event(
+                            events_tx,
+                            Event::SwitchSucceeded {
+                                profile: profile.clone(),
+                                duration_us: started.elapsed().as_micros(),
+                                applied: report.applied,
+                                skipped: report.skipped,
+                                forced: report.forced,
+                            },
+                        );
+                        let msg = format!(
+                            "Switched to profile '{}': {} applied, {} skipped, {} forced",
+                            profile, report.applied, report.skipped, report.forced
+                        );
+                        send_notification("AetherShift", &msg, false, disabled);
+                        Response::ok(msg)
+                    }
+                    Err(e) => {
+                        health.lock().await.record_failure(e.to_string());
+                        state.lock().await.record_switch_history(
+                            &profile,
+                            false,
+                            started.elapsed().as_micros(),
+                            0,
+                            0,
+                            0,
+                            Some(e.to_string()),
+                        );
+                        broadcast_event(
+                            events_tx,
+                            Event::SwitchFailed {
+                                profile: profile.clone(),
+                                error: e.to_string(),
+                            },
+                        );
+                        Response::err("HYPRLAND_ERROR", e.to_string())
+                    }
+                }
+            }
+
+            Request::History { limit } => {
+                let entries: Vec<HistoryEntry> = state.lock().await.switch_history(limit);
+                Response::ok_with_data("Switch history retrieved", &entries)
+                    .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
+            }
+
+            Request::ReloadPresets => {
+                let mut st = state.lock().await;
+                match st.load_profiles_from_dir(&config.preset_dir) {
+                    Ok(count) => {
+                        broadcast_event(events_tx, Event::PresetsReloaded { count });
+                        Response::ok(format!("Reloaded {count} presets"))
+                    }
+                    Err(e) => Response::err("RELOAD_FAILED", e.to_string()),
+                }
+            }
+
+            Request::UpsertProfile { toml } => {
+                let mut st = state.lock().await;
+                match aethershift_core::Profile::from_toml_str(&toml) {
+                    Ok(profile) => {
+                        let name = profile.name.clone();
+                        let count = profile.bindings.len();
+                        st.register_profile(profile);
+                        Response::ok(format!("Profile '{name}' loaded with {count} bindings"))
+                    }
+                    Err(e) => Response::err("PROFILE_INVALID", e.to_string()),
+                }
+            }
+
+            Request::GetProfile { name } => {
+                let st = state.lock().await;
+                match st.get_profile(&name) {
+                    Some(profile) => {
+                        let bindings = profile
+                            .bindings
+                            .iter()
+                            .map(|binding| BindingInfo {
+                                key_combo: binding.key_combo.canonical_str(),
+                                action: binding.action.display_name(),
+                                description: binding.description.clone(),
+                            })
+                            .collect::<Vec<_>>();
+                        let payload = serde_json::json!({
+                            "name": profile.name,
+                            "description": profile.description,
+                            "window_policy": profile.window_policy,
+                            "bindings": bindings,
+                        });
+                        Response::ok_with_data("Profile retrieved", &payload)
+                            .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
+                    }
+                    None => Response::err(
+                        "PROFILE_NOT_FOUND",
+                        format!("Profile '{name}' was not found"),
+                    ),
+                }
+            }
+
             // Phase 3 Window Layout Actions
-            Request::ApplyLayout { layout } => {
+            Request::ApplyLayout { layout, preview } => {
                 let client = match hyprland {
                     Some(c) => c,
                     None => {
@@ -730,8 +1016,12 @@ Response::ok("Successfully restored baseline keybindings")
                     SnapLayout::OneThirdLeft => aethershift_core::SnapLayout::OneThirdLeft,
                     SnapLayout::TwoThirdsRight => aethershift_core::SnapLayout::TwoThirdsRight,
                     SnapLayout::ThreeColumnsLeft => aethershift_core::SnapLayout::ThreeColumnsLeft,
-                    SnapLayout::ThreeColumnsCenter => aethershift_core::SnapLayout::ThreeColumnsCenter,
-                    SnapLayout::ThreeColumnsRight => aethershift_core::SnapLayout::ThreeColumnsRight,
+                    SnapLayout::ThreeColumnsCenter => {
+                        aethershift_core::SnapLayout::ThreeColumnsCenter
+                    }
+                    SnapLayout::ThreeColumnsRight => {
+                        aethershift_core::SnapLayout::ThreeColumnsRight
+                    }
                     SnapLayout::Maximize => aethershift_core::SnapLayout::Maximize,
                     SnapLayout::CenterFloating => aethershift_core::SnapLayout::CenterFloating,
                     SnapLayout::RestoreOriginal => aethershift_core::SnapLayout::RestoreOriginal,
@@ -741,11 +1031,24 @@ Response::ok("Successfully restored baseline keybindings")
                     let mut mem = geometry_memory.lock().await;
                     match mem.restore_original(&active_win.address) {
                         Some(orig) => orig,
-                        None => Rect::new(active_win.at.0, active_win.at.1, active_win.size.0, active_win.size.1),
+                        None => Rect::new(
+                            active_win.at.0,
+                            active_win.at.1,
+                            active_win.size.0,
+                            active_win.size.1,
+                        ),
                     }
                 } else {
-                    let orig_rect = Rect::new(active_win.at.0, active_win.at.1, active_win.size.0, active_win.size.1);
-                    geometry_memory.lock().await.record_if_absent(&active_win.address, orig_rect);
+                    let orig_rect = Rect::new(
+                        active_win.at.0,
+                        active_win.at.1,
+                        active_win.size.0,
+                        active_win.size.1,
+                    );
+                    geometry_memory
+                        .lock()
+                        .await
+                        .record_if_absent(&active_win.address, orig_rect);
                     LayoutEngine::compute_geometry(core_layout, work_rect)
                 };
 
@@ -761,11 +1064,41 @@ Response::ok("Successfully restored baseline keybindings")
                     .await
                 {
                     Ok(()) => {
-                        let action_name = format!("snap_{}", layout.as_str());
-                        stats.lock().await.record_action(&action_name);
-                        let notif_body = format!("Applied layout '{}' to '{}'", layout.as_str(), active_win.title);
-                        send_notification("AetherShift", &notif_body, false, disabled);
-                        Response::ok(format!("Applied layout '{}' to window '{}'", layout.as_str(), active_win.title))
+                        let action = if preview { "previewed" } else { "Applied" };
+                        let message = format!(
+                            "{action} layout '{}' on monitor '{}': [{}, {}, {}, {}]",
+                            layout.as_str(),
+                            mon.name,
+                            target_rect.x,
+                            target_rect.y,
+                            target_rect.width,
+                            target_rect.height
+                        );
+                        let feedback = LayoutFeedback {
+                            layout: layout.as_str().to_string(),
+                            preview,
+                            monitor: mon.name.clone(),
+                            from: Some([
+                                active_win.at.0,
+                                active_win.at.1,
+                                active_win.size.0,
+                                active_win.size.1,
+                            ]),
+                            to: [
+                                target_rect.x,
+                                target_rect.y,
+                                target_rect.width,
+                                target_rect.height,
+                            ],
+                            message: Some(message.clone()),
+                        };
+                        if !preview {
+                            let action_name = format!("snap_{}", layout.as_str());
+                            stats.lock().await.record_action(&action_name);
+                            send_notification("AetherShift", &message, false, disabled);
+                        }
+                        Response::ok_with_data(message, &feedback)
+                            .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
                     }
                     Err(e) => {
                         let err_msg = format!("Failed applying layout: {}", e);
@@ -801,7 +1134,11 @@ Response::ok("Successfully restored baseline keybindings")
             }
 
             // Phase 3 Profile Runtime Editing & Persistence
-            Request::CreateProfile { name, description, copy_from } => {
+            Request::CreateProfile {
+                name,
+                description,
+                copy_from,
+            } => {
                 let mut st = state.lock().await;
                 match st.create_profile(&name, description.as_deref(), copy_from.as_deref()) {
                     Ok(()) => Response::ok(format!("Profile '{}' created successfully", name)),
@@ -809,7 +1146,12 @@ Response::ok("Successfully restored baseline keybindings")
                 }
             }
 
-            Request::UpdateBinding { profile, key_combo, action, description } => {
+            Request::UpdateBinding {
+                profile,
+                key_combo,
+                action,
+                description,
+            } => {
                 let plan_opt = {
                     let mut st = state.lock().await;
                     match st.update_binding(&profile, &key_combo, &action, description.as_deref()) {
@@ -820,10 +1162,16 @@ Response::ok("Successfully restored baseline keybindings")
 
                 if let Some(plan) = plan_opt {
                     if let Err(e) = Self::execute_plan(&plan, state, hyprland).await {
-                        return Response::err("HYPRLAND_ERROR", format!("Updated in memory but failed to apply: {}", e));
+                        return Response::err(
+                            "HYPRLAND_ERROR",
+                            format!("Updated in memory but failed to apply: {}", e),
+                        );
                     }
                 }
-                Response::ok(format!("Binding '{}' -> '{}' updated in profile '{}'", key_combo, action, profile))
+                Response::ok(format!(
+                    "Binding '{}' -> '{}' updated in profile '{}'",
+                    key_combo, action, profile
+                ))
             }
 
             Request::RemoveBinding { profile, key_combo } => {
@@ -837,10 +1185,16 @@ Response::ok("Successfully restored baseline keybindings")
 
                 if let Some(plan) = plan_opt {
                     if let Err(e) = Self::execute_plan(&plan, state, hyprland).await {
-                        return Response::err("HYPRLAND_ERROR", format!("Removed in memory but failed to unbind: {}", e));
+                        return Response::err(
+                            "HYPRLAND_ERROR",
+                            format!("Removed in memory but failed to unbind: {}", e),
+                        );
                     }
                 }
-                Response::ok(format!("Binding '{}' removed from profile '{}'", key_combo, profile))
+                Response::ok(format!(
+                    "Binding '{}' removed from profile '{}'",
+                    key_combo, profile
+                ))
             }
 
             Request::SaveProfile { profile } => {
@@ -849,7 +1203,9 @@ Response::ok("Successfully restored baseline keybindings")
                     st.save_profile(&profile, None)
                 };
                 match res {
-                    Ok(path) => Response::ok(format!("Profile '{}' saved to {}", profile, path.display())),
+                    Ok(path) => {
+                        Response::ok(format!("Profile '{}' saved to {}", profile, path.display()))
+                    }
                     Err(e) => Response::err("SAVE_PROFILE_FAILED", e.to_string()),
                 }
             }
@@ -889,7 +1245,11 @@ Response::ok("Successfully restored baseline keybindings")
                             Err(e) => Response::err("SERIALIZATION_ERROR", e.to_string()),
                         }
                     }
-                    None => Response::ok_with_data("No active profile", &Vec::<aethershift_protocol::Recommendation>::new()).unwrap(),
+                    None => Response::ok_with_data(
+                        "No active profile",
+                        &Vec::<aethershift_protocol::Recommendation>::new(),
+                    )
+                    .unwrap(),
                 }
             }
 
@@ -915,10 +1275,7 @@ Response::ok("Successfully restored baseline keybindings")
             Request::Doctor { export } => {
                 let (active_profile, baseline_count) = {
                     let st = state.lock().await;
-                    (
-                        st.active_profile_name().to_string(),
-                        st.baseline().len(),
-                    )
+                    (st.active_profile_name().to_string(), st.baseline().len())
                 };
                 let health_snapshot = health.lock().await.clone();
                 let backend_message = if health_snapshot.backend_connected {
@@ -948,8 +1305,9 @@ Response::ok("Successfully restored baseline keybindings")
                     },
                     Some(path) => match serde_json::to_string_pretty(&report)
                         .map_err(|e| e.to_string())
-                        .and_then(|json| std::fs::write(path, json + "\n").map_err(|e| e.to_string()))
-                    {
+                        .and_then(|json| {
+                            std::fs::write(path, json + "\n").map_err(|e| e.to_string())
+                        }) {
                         Ok(()) => Response::ok(format!("Diagnostic report exported to {path}")),
                         Err(error) => Response::err("EXPORT_FAILED", error),
                     },
@@ -993,7 +1351,11 @@ Response::ok("Successfully restored baseline keybindings")
                 let registry = plugins.lock().await;
                 let selected: Vec<WirePluginInfo> = registry
                     .plugins()
-                    .filter(|plugin| id.as_deref().map(|wanted| plugin.manifest.id == wanted).unwrap_or(true))
+                    .filter(|plugin| {
+                        id.as_deref()
+                            .map(|wanted| plugin.manifest.id == wanted)
+                            .unwrap_or(true)
+                    })
                     .map(plugin_to_wire)
                     .collect();
                 let failures: Vec<String> = registry
@@ -1013,7 +1375,10 @@ Response::ok("Successfully restored baseline keybindings")
             Request::PluginRun { id } => {
                 let plugin = plugins.lock().await.get(&id).cloned();
                 let Some(plugin) = plugin else {
-                    return Response::err("PLUGIN_NOT_FOUND", format!("Plugin '{id}' is not loaded"));
+                    return Response::err(
+                        "PLUGIN_NOT_FOUND",
+                        format!("Plugin '{id}' is not loaded"),
+                    );
                 };
                 let input = PluginActionInput {
                     action_id: &id,
