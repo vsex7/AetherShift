@@ -136,4 +136,4 @@ key_combo = "SUPER + TAB"
 description = "Open Task Overview"
 [bindings.action]
 type = "exec"
-arg = "omarchy-shell shell summon omarchy.aethershift '{\"view\":\"overview\"}' || aethershift tui"
+arg = "omarchy-shell shell summon abyss.aethershift '{\"view\":\"overview\"}' || aethershift tui"

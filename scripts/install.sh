@@ -46,8 +46,8 @@ fi
 
 echo "==> [5/5] Checking Quickshell plugin integration for Omarchy..."
 OMARCHY_SHELL_DIR="/usr/share/omarchy/shell"
-PLUGIN_SRC="${ROOT_DIR}/extras/omarchy-plugin/omarchy.aethershift"
-PLUGIN_DEST="${HOME}/.config/omarchy/plugins/omarchy.aethershift"
+PLUGIN_SRC="${ROOT_DIR}/extras/omarchy-plugin/abyss.aethershift"
+PLUGIN_DEST="${HOME}/.config/omarchy/plugins/abyss.aethershift"
 
 if [ -d "${OMARCHY_SHELL_DIR}" ]; then
     echo "    Omarchy Quickshell detected at ${OMARCHY_SHELL_DIR}."

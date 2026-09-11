@@ -156,6 +156,9 @@ pub enum Event {
     PresetsReloaded {
         count: usize,
     },
+    SnapFeedback {
+        feedback: LayoutFeedback,
+    },
 }
 
 /// Profile and shortcut optimization recommendation
@@ -725,5 +728,38 @@ mod tests {
         let json = serde_json::to_string(&status).expect("serialize status");
         let deserialized: StatusInfo = serde_json::from_str(&json).expect("deserialize status");
         assert_eq!(deserialized, status);
+    }
+
+    #[test]
+    fn test_snap_feedback_event_serialization() {
+        let feedback = LayoutFeedback {
+            layout: "half-left".to_string(),
+            preview: false,
+            monitor: "DP-1".to_string(),
+            from: Some([0, 0, 1920, 1080]),
+            to: [0, 0, 960, 1080],
+            message: Some(
+                "Applied layout 'half-left' on monitor 'DP-1': [0, 0, 960, 1080]".to_string(),
+            ),
+        };
+        let event = Event::SnapFeedback {
+            feedback: feedback.clone(),
+        };
+
+        let json = serde_json::to_string(&event).expect("serialize SnapFeedback event");
+        let expected = r#"{"kind":"snap-feedback","payload":{"feedback":{"layout":"half-left","preview":false,"monitor":"DP-1","from":[0,0,1920,1080],"to":[0,0,960,1080],"message":"Applied layout 'half-left' on monitor 'DP-1': [0, 0, 960, 1080]"}}}"#;
+        assert_eq!(json, expected);
+
+        let deserialized: Event =
+            serde_json::from_str(&json).expect("deserialize SnapFeedback event");
+        assert_eq!(deserialized, event);
+
+        let response = Response::Event {
+            event: event.clone(),
+        };
+        let resp_json = serde_json::to_string(&response).expect("serialize Response::Event");
+        let deserialized_resp: Response =
+            serde_json::from_str(&resp_json).expect("deserialize Response::Event");
+        assert_eq!(deserialized_resp, response);
     }
 }

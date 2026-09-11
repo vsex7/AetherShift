@@ -37,7 +37,7 @@ for bin in aethershift aethershift-daemon aethershift-tui; do
 done
 
 echo "==> [5/6] Removing Omarchy Quickshell plugin link..."
-OMARCHY_PLUGIN="${HOME}/.config/omarchy/plugins/omarchy.aethershift"
+OMARCHY_PLUGIN="${HOME}/.config/omarchy/plugins/abyss.aethershift"
 if [ -L "${OMARCHY_PLUGIN}" ] || [ -e "${OMARCHY_PLUGIN}" ]; then
     rm -rf "${OMARCHY_PLUGIN}"
     echo "    Removed ${OMARCHY_PLUGIN}"

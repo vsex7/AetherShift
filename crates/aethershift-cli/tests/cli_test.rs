@@ -44,6 +44,9 @@ async fn test_cli_parsing() {
     let cli_restore = Cli::try_parse_from(["aethershift", "restore"]).unwrap();
     assert!(matches!(cli_restore.command, Command::Restore));
 
+    let cli_hud = Cli::try_parse_from(["aethershift", "hud"]).unwrap();
+    assert!(matches!(cli_hud.command, Command::Hud));
+
     let cli_shutdown = Cli::try_parse_from(["aethershift", "shutdown"]).unwrap();
     assert!(matches!(cli_shutdown.command, Command::Shutdown));
 }
@@ -192,6 +195,10 @@ async fn test_cli_commands_with_daemon() {
     )
     .await;
     assert!(res.is_err());
+
+    // 5f. Hud
+    let res = execute_command(&sock, Command::Hud).await;
+    assert!(res.is_ok());
 
     // 6. Shutdown
     let res = execute_command(&sock, Command::Shutdown).await;

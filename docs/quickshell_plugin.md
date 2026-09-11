@@ -20,32 +20,32 @@ Omarchy 4.x 使用 Quickshell 构建了一套模块化、响应式且具有高�
 
 AetherShift 提供了专用的 Quickshell 状态栏微件（Bar Widget），源码位于：
 ```text
-extras/omarchy-plugin/omarchy.aethershift/
+extras/omarchy-plugin/abyss.aethershift/
 ```
 
 ### 自动化安装
 当运行 `./scripts/install.sh` 时，脚本会自动检测系统是否存在 `/usr/share/omarchy/shell/`，若存在则自动在用户目录建立软链接：
 ```bash
-ln -sfn "$PWD/extras/omarchy-plugin/omarchy.aethershift" "$HOME/.config/omarchy/plugins/omarchy.aethershift"
+ln -sfn "$PWD/extras/omarchy-plugin/abyss.aethershift" "$HOME/.config/omarchy/plugins/abyss.aethershift"
 ```
 
 ### 手动安装与启用
 若需要手动配置，可执行以下命令：
 ```bash
 mkdir -p ~/.config/omarchy/plugins
-ln -sfn "$PWD/extras/omarchy-plugin/omarchy.aethershift" ~/.config/omarchy/plugins/omarchy.aethershift
+ln -sfn "$PWD/extras/omarchy-plugin/abyss.aethershift" ~/.config/omarchy/plugins/abyss.aethershift
 ```
 
 ---
 
 ## 3. 插件元数据规范 (`manifest.json`)
 
-在 `extras/omarchy-plugin/omarchy.aethershift/manifest.json` 中配置如下标准规范：
+在 `extras/omarchy-plugin/abyss.aethershift/manifest.json` 中配置如下标准规范：
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "omarchy.aethershift",
+  "id": "abyss.aethershift",
   "name": "AetherShift",
   "version": "0.1.0",
   "author": "AetherShift Contributors",
@@ -104,12 +104,12 @@ AetherShift Daemon 监听套接字：
 
 若要在 Omarchy 顶部/底部状态栏（Bar）中常驻展示 AetherShift 指示器：
 1. 打开 Omarchy Shell 配置文件 `~/.config/omarchy/shell.json`；
-2. 在 `bar.start`、`bar.center` 或 `bar.end` 数组中添加 `"omarchy.aethershift"`，例如：
+2. 在 `bar.start`、`bar.center` 或 `bar.end` 数组中添加 `"abyss.aethershift"`，例如：
    ```json
    {
      "bar": {
        "end": [
-         "omarchy.aethershift",
+         "abyss.aethershift",
          "omarchy.audio",
          "omarchy.network",
          "omarchy.clock"

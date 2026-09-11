@@ -25,6 +25,11 @@ pub async fn send_daemon_request(socket_path: &Path, req: &Request) -> Result<Re
 }
 
 /// Execute command and print friendly output
+/// Run client command against the daemon
+pub async fn run_client(cmd: crate::cli::Command, socket_path: &Path) -> Result<()> {
+    Box::pin(execute_command(socket_path, cmd)).await
+}
+
 pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Result<()> {
     use crate::cli::{Command, ProfileCommand, WindowModeAction, parse_window_policy};
 
@@ -203,7 +208,7 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
                 .args([
                     "shell",
                     "summon",
-                    "omarchy.aethershift",
+                    "abyss.aethershift",
                     "{\"view\":\"settings\"}",
                 ])
                 .status();
@@ -222,7 +227,7 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
                 .args([
                     "shell",
                     "summon",
-                    "omarchy.aethershift",
+                    "abyss.aethershift",
                     "{\"view\":\"overview\"}",
                 ])
                 .status();
@@ -235,6 +240,30 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
             aethershift_tui::run_tui(Some(socket_path.to_path_buf()))
                 .await
                 .context("TUI execution failed")?;
+        }
+        Command::Hud => {
+            let status = std::process::Command::new("omarchy-shell")
+                .args([
+                    "shell",
+                    "summon",
+                    "abyss.aethershift",
+                    "{\"view\":\"cheatsheet\"}",
+                ])
+                .status();
+            if let Ok(s) = status {
+                if s.success() {
+                    return Ok(());
+                }
+            }
+            run_client(
+                Command::Bindings {
+                    profile: None,
+                    action: None,
+                    json: false,
+                },
+                socket_path,
+            )
+            .await?;
         }
         Command::Tui => {
             aethershift_tui::run_tui(Some(socket_path.to_path_buf()))

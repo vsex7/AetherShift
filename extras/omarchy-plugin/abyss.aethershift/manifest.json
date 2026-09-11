@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.aethershift",
+  "id": "abyss.aethershift",
   "name": "AetherShift",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "AetherShift",
-  "description": "Dynamic desktop paradigm indicator, settings panel, and task overview",
+  "description": "Dynamic desktop paradigm indicator, settings panel, task overview, cheat-sheet HUD and snap feedback",
   "kinds": [
     "bar-widget",
     "overlay"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "AetherShift Paradigm",
-    "description": "Dynamic desktop paradigm indicator, settings and overview",
+    "description": "Dynamic desktop paradigm indicator, settings, and task overview",
     "category": "Compositor",
     "allowMultiple": false
   }

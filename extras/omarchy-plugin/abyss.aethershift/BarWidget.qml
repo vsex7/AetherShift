@@ -5,7 +5,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "omarchy.aethershift"
+  moduleName: "abyss.aethershift"
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -35,7 +35,7 @@ BarWidget {
   }
 
   Timer {
-    interval: 2000
+    interval: 1500
     running: true
     repeat: true
     triggeredOnStart: true
@@ -66,7 +66,7 @@ BarWidget {
       if (!root.bar) return
       if (mouseButton === Qt.RightButton) {
         // Open the settings panel / overlay
-        root.bar.run("omarchy-shell shell summon omarchy.aethershift '{\"view\":\"settings\"}'")
+        root.bar.run("omarchy-shell shell summon abyss.aethershift '{\"view\":\"settings\"}'")
       } else {
         // Left click: instant cycle
         root.bar.run("aethershift cycle")

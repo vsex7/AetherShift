@@ -121,6 +121,9 @@ pub enum Command {
     /// Launch full-screen Task Overview
     Overview,
 
+    /// Summon the on-screen Cheat-Sheet HUD overlay
+    Hud,
+
     /// Launch the interactive terminal console (TUI)
     Tui,
 

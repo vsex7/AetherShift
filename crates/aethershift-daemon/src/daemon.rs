@@ -41,6 +41,7 @@ fn event_kind(event: &Event) -> &'static str {
         Event::Restored { .. } => "restored",
         Event::WindowPolicyChanged { .. } => "window-policy-changed",
         Event::PresetsReloaded { .. } => "presets-reloaded",
+        Event::SnapFeedback { .. } => "snap-feedback",
     }
 }
 
@@ -1080,6 +1081,12 @@ impl AetherDaemon {
                         ],
                         message: Some(message.clone()),
                     };
+                    broadcast_event(
+                        events_tx,
+                        Event::SnapFeedback {
+                            feedback: feedback.clone(),
+                        },
+                    );
                     return Response::ok_with_data(message, &feedback)
                         .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()));
                 }
@@ -1126,6 +1133,12 @@ impl AetherDaemon {
                         let action_name = format!("snap_{}", layout.as_str());
                         stats.lock().await.record_action(&action_name);
                         send_notification("AetherShift", &message, false, disabled);
+                        broadcast_event(
+                            events_tx,
+                            Event::SnapFeedback {
+                                feedback: feedback.clone(),
+                            },
+                        );
                         Response::ok_with_data(message, &feedback)
                             .unwrap_or_else(|e| Response::err("INTERNAL_ERROR", e.to_string()))
                     }
@@ -1499,5 +1512,19 @@ mod tests {
             AetherDaemon::core_action_to_hypr(&Action::WorkspaceNext),
             HyprAction::Workspace(WorkspaceTarget::Relative(1))
         );
+    }
+
+    #[test]
+    fn test_event_kind_snap_feedback() {
+        let feedback = LayoutFeedback {
+            layout: "half-left".to_string(),
+            preview: true,
+            monitor: "DP-1".to_string(),
+            from: None,
+            to: [0, 0, 960, 1080],
+            message: None,
+        };
+        let event = Event::SnapFeedback { feedback };
+        assert_eq!(event_kind(&event), "snap-feedback");
     }
 }
