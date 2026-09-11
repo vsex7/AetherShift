@@ -1,0 +1,24 @@
+[package]
+name = "aethershift-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aethershift-tui"
+path = "src/main.rs"
+
+[dependencies]
+aethershift-protocol = { path = "../aethershift-protocol" }
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+clap = { workspace = true }
+
+[dev-dependencies]
+aethershift-daemon = { path = "../aethershift-daemon" }
+tempfile = "3"

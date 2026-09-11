@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.aethershift",
+  "name": "AetherShift",
+  "version": "0.1.0",
+  "author": "AetherShift",
+  "description": "Dynamic desktop paradigm indicator and quick switcher",
+  "kinds": [
+    "bar-widget",
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
+  },
+  "barWidget": {
+    "displayName": "AetherShift Paradigm",
+    "description": "Dynamic desktop paradigm indicator and quick switcher",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}

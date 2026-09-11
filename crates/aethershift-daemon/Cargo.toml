@@ -1,0 +1,23 @@
+[package]
+name = "aethershift-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aethershift-daemon"
+path = "src/main.rs"
+
+[dependencies]
+aethershift-protocol = { path = "../aethershift-protocol" }
+aethershift-hyprland = { path = "../aethershift-hyprland" }
+aethershift-core = { path = "../aethershift-core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+futures.workspace = true

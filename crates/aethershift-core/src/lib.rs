@@ -1,0 +1,17 @@
+pub mod backend;
+pub mod binding;
+pub mod conflict;
+pub mod error;
+pub mod layout;
+pub mod plugin;
+pub mod profile;
+pub mod profile_metadata;
+pub mod state;
+pub mod stats;
+pub use binding::{Action, Binding, KeyCombo, Modifier};
+pub use error::CoreError;
+pub use layout::{GeometryMemory, LayoutEngine, Rect, SnapLayout};
+pub use profile::Profile;
+pub use profile_metadata::{ConflictPolicy, WindowPolicyKind};
+pub use state::{BaselineBinding, ProfileInfo, StateManager, SwitchPlan};
+pub use stats::{Recommendation, StatsEngine, UsageStats};

@@ -1,0 +1,16 @@
+[Unit]
+Description=AetherShift Dynamic Paradigm Switching Daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+Documentation=https://github.com/AetherShift/AetherShift
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/aethershift-daemon --preset-dir %h/.config/aethershift/presets
+ExecStop=%h/.local/bin/aethershift restore
+Restart=on-failure
+RestartSec=2
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target

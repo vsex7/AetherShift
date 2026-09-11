@@ -1,0 +1,97 @@
+name = "macos"
+description = "macOS-style workflow preset for Hyprland"
+priority = 20
+conflicts_policy = "strict"
+window_policy = "floating"
+
+[[bindings]]
+key_combo = "SUPER + Q"
+description = "Quit active window"
+[bindings.action]
+type = "close_window"
+
+[[bindings]]
+key_combo = "SUPER + W"
+description = "Close active window"
+[bindings.action]
+type = "close_window"
+
+[[bindings]]
+key_combo = "SUPER + CTRL + F"
+description = "Toggle fullscreen"
+[bindings.action]
+type = "fullscreen"
+
+[[bindings]]
+key_combo = "SUPER + M"
+description = "Minimize active window"
+[bindings.action]
+type = "float_toggle"
+
+[[bindings]]
+key_combo = "SUPER + SPACE"
+description = "Open application launcher"
+[bindings.action]
+type = "toggle_launcher"
+
+[[bindings]]
+key_combo = "CTRL + LEFT"
+description = "Previous workspace"
+[bindings.action]
+type = "workspace_prev"
+
+[[bindings]]
+key_combo = "CTRL + RIGHT"
+description = "Next workspace"
+[bindings.action]
+type = "workspace_next"
+
+[[bindings]]
+key_combo = "SUPER + LEFT"
+description = "Snap active window left"
+[bindings.action]
+type = "snap_left"
+
+[[bindings]]
+key_combo = "SUPER + RIGHT"
+description = "Snap active window right"
+[bindings.action]
+type = "snap_right"
+
+[[bindings]]
+key_combo = "SUPER + UP"
+description = "Maximize active window"
+[bindings.action]
+type = "maximize"
+
+[[bindings]]
+key_combo = "SUPER + DOWN"
+description = "Restore active window"
+[bindings.action]
+type = "restore"
+
+[[bindings]]
+key_combo = "SUPER + TAB"
+description = "Cycle windows forward"
+[bindings.action]
+type = "cycle_window_next"
+
+[[bindings]]
+key_combo = "SUPER + SHIFT + TAB"
+description = "Cycle windows backward"
+[bindings.action]
+type = "cycle_window_prev"
+
+[[bindings]]
+key_combo = "SUPER + CTRL + Q"
+description = "Lock system"
+[bindings.action]
+type = "exec"
+arg = "omarchy-system-lock"
+
+[[bindings]]
+key_combo = "PRINT"
+description = "Take screenshot"
+[bindings.action]
+type = "exec"
+arg = "omarchy-capture-screenshot"

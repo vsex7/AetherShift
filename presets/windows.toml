@@ -1,0 +1,107 @@
+name = "windows"
+description = "Windows-style workflow preset for Hyprland"
+priority = 10
+conflicts_policy = "strict"
+window_policy = "tiled"
+
+[[bindings]]
+key_combo = "ALT + F4"
+description = "Close active window"
+[bindings.action]
+type = "close_window"
+
+[[bindings]]
+key_combo = "SUPER + LEFT"
+description = "Snap active window left"
+[bindings.action]
+type = "snap_left"
+
+[[bindings]]
+key_combo = "SUPER + RIGHT"
+description = "Snap active window right"
+[bindings.action]
+type = "snap_right"
+
+[[bindings]]
+key_combo = "SUPER + UP"
+description = "Maximize active window"
+[bindings.action]
+type = "maximize"
+
+[[bindings]]
+key_combo = "SUPER + DOWN"
+description = "Restore active window"
+[bindings.action]
+type = "restore"
+
+[[bindings]]
+key_combo = "SUPER + D"
+description = "Toggle desktop workspace"
+[bindings.action]
+type = "toggle_special_workspace"
+
+[[bindings]]
+key_combo = "SUPER + E"
+description = "Open file manager"
+[bindings.action]
+type = "exec"
+arg = "omarchy-launch-nautilus"
+
+[[bindings]]
+key_combo = "CTRL + SHIFT + ESCAPE"
+description = "Open task manager"
+[bindings.action]
+type = "exec"
+arg = "omarchy-launch-terminal btop"
+
+[[bindings]]
+key_combo = "SUPER + L"
+description = "Lock system"
+[bindings.action]
+type = "exec"
+arg = "omarchy-system-lock"
+
+[[bindings]]
+key_combo = "PRINT"
+description = "Take screenshot"
+[bindings.action]
+type = "exec"
+arg = "omarchy-capture-screenshot"
+
+[[bindings]]
+key_combo = "SUPER + V"
+description = "Toggle clipboard manager"
+[bindings.action]
+type = "exec"
+arg = "omarchy-shell shell toggle omarchy.clipboard"
+
+[[bindings]]
+key_combo = "CTRL + ALT + LEFT"
+description = "Previous workspace"
+[bindings.action]
+type = "workspace_prev"
+
+[[bindings]]
+key_combo = "CTRL + ALT + RIGHT"
+description = "Next workspace"
+[bindings.action]
+type = "workspace_next"
+
+[[bindings]]
+key_combo = "ALT + TAB"
+description = "Cycle windows forward"
+[bindings.action]
+type = "cycle_window_next"
+
+[[bindings]]
+key_combo = "ALT + SHIFT + TAB"
+description = "Cycle windows backward"
+[bindings.action]
+type = "cycle_window_prev"
+
+[[bindings]]
+key_combo = "CTRL + ALT + T"
+description = "Open terminal"
+[bindings.action]
+type = "exec"
+arg = "omarchy-launch-terminal"

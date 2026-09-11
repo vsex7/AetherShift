@@ -1,0 +1,26 @@
+[package]
+name = "aethershift-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "aethershift_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aethershift"
+path = "src/main.rs"
+
+[dependencies]
+aethershift-protocol = { path = "../aethershift-protocol" }
+aethershift-daemon = { path = "../aethershift-daemon" }
+aethershift-tui = { path = "../aethershift-tui" }
+tokio.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+futures.workspace = true

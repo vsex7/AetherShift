@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scripts": {
+    "dev": {
+      "command": "echo 'AetherShift Dev Server running...'",
+      "description": "Start local development server"
+    },
+    "test": {
+      "command": "echo 'Running AetherShift tests...'",
+      "description": "Run test suite"
+    },
+    "build": {
+      "command": "echo 'Building AetherShift...'",
+      "description": "Build project production artifacts"
+    }
+  }
+}

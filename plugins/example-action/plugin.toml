@@ -1,0 +1,7 @@
+id = "example.screenshot"
+version = "0.1.0"
+description = "Community example plugin providing screenshot utility actions"
+executable = "./screenshot.sh"
+timeout_ms = 1500
+permissions = ["notification", "shell"]
+enabled = true

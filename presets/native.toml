@@ -1,0 +1,3 @@
+name = "native"
+description = "Native Hyprland keybindings baseline with no active overlays"
+bindings = []
