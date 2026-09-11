@@ -99,3 +99,17 @@ description = "Take screenshot"
 [bindings.action]
 type = "exec"
 arg = "omarchy-capture-screenshot"
+
+[[bindings]]
+key_combo = "SUPER + SHIFT + 5"
+description = "Toggle screen recording"
+[bindings.action]
+type = "exec"
+arg = "omarchy-capture-screenrecording"
+
+[[bindings]]
+key_combo = "CTRL + SUPER + SPACE"
+description = "Toggle emoji picker"
+[bindings.action]
+type = "exec"
+arg = "omarchy-shell shell toggle omarchy.emojis"

@@ -501,6 +501,41 @@ impl StateManager {
     // ==========================================
 
     /// Create a new profile at runtime, optionally copying bindings from an existing profile.
+    /// Save the current active overlays as a new custom profile
+    pub fn save_current_as_profile(
+        &mut self,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<(), CoreError> {
+        let name_trimmed = name.trim();
+        if name_trimmed.is_empty() {
+            return Err(CoreError::Validation {
+                profile: name.to_string(),
+                message: "Profile name cannot be empty".to_string(),
+            });
+        }
+        if self.profiles.contains_key(name_trimmed) {
+            return Err(CoreError::Validation {
+                profile: name_trimmed.to_string(),
+                message: format!("Profile '{}' already exists", name_trimmed),
+            });
+        }
+        let bindings: Vec<Binding> = self.active_overlays.values().cloned().collect();
+        let desc = description
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| format!("Custom profile snapshot of '{}'", self.active_profile));
+        let profile = Profile {
+            name: name_trimmed.to_string(),
+            description: desc,
+            bindings,
+            priority: Some(50),
+            conflicts_policy: Some(crate::profile_metadata::ConflictPolicy::Strict),
+            window_policy: None,
+        };
+        self.register_profile(profile);
+        Ok(())
+    }
+
     pub fn create_profile(
         &mut self,
         name: &str,
@@ -744,7 +779,7 @@ mod tests {
         let gaming = sm.get_profile("gaming").unwrap();
         assert_eq!(gaming.name, "gaming");
         assert_eq!(gaming.description, "Gaming profile");
-        assert_eq!(gaming.bindings.len(), 17);
+        assert_eq!(gaming.bindings.len(), 19);
 
         // Duplicate name fails
         assert!(sm.create_profile("gaming", None, None).is_err());

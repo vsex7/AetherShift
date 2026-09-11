@@ -291,6 +291,13 @@ pub enum Request {
     },
 
     // Profile runtime editing and persistence
+    SaveCurrentAsProfile {
+        name: String,
+        description: Option<String>,
+    },
+    SwapWindow {
+        direction: String,
+    },
     CreateProfile {
         name: String,
         description: Option<String>,

@@ -139,10 +139,10 @@ fn test_presets_loading_in_state_manager() {
     assert!(names.contains(&"hybrid".to_string()));
 
     let windows = sm.get_profile("windows").unwrap();
-    assert_eq!(windows.bindings.len(), 17);
+    assert_eq!(windows.bindings.len(), 19);
 
     let macos = sm.get_profile("macos").unwrap();
-    assert_eq!(macos.bindings.len(), 15);
+    assert_eq!(macos.bindings.len(), 17);
 
     let native = sm.get_profile("native").unwrap();
     assert_eq!(native.bindings.len(), 0);
@@ -158,11 +158,11 @@ fn test_state_manager_switch_and_diff() {
     let plan = sm.switch_profile("windows").unwrap();
     assert_eq!(plan.target_profile, "windows");
     assert_eq!(plan.unbind.len(), 0);
-    assert_eq!(plan.bind.len(), 17);
+    assert_eq!(plan.bind.len(), 19);
 
     sm.commit_switch(&plan).unwrap();
     assert_eq!(sm.active_profile_name(), "windows");
-    assert_eq!(sm.overlays_count(), 17);
+    assert_eq!(sm.overlays_count(), 19);
 
     // Switching to windows again should produce an empty plan (no-op diff)
     let plan_noop = sm.switch_profile("windows").unwrap();
@@ -172,19 +172,19 @@ fn test_state_manager_switch_and_diff() {
     let plan_macos = sm.switch_profile("macos").unwrap();
     assert_eq!(plan_macos.target_profile, "macos");
     // Eleven differing Windows overlays are removed; identical actions carry over.
-    assert_eq!(plan_macos.unbind.len(), 15);
+    assert_eq!(plan_macos.unbind.len(), 17);
     // All macOS overlays should be bound.
     // Five identical actions carry over, leaving ten new macOS bindings.
-    assert_eq!(plan_macos.bind.len(), 13);
+    assert_eq!(plan_macos.bind.len(), 15);
 
     sm.commit_switch(&plan_macos).unwrap();
     assert_eq!(sm.active_profile_name(), "macos");
-    assert_eq!(sm.overlays_count(), 15);
+    assert_eq!(sm.overlays_count(), 17);
 
     // Restore plan
     let restore = sm.restore_plan();
     assert_eq!(restore.target_profile, "native");
-    assert_eq!(restore.unbind.len(), 15);
+    assert_eq!(restore.unbind.len(), 17);
     assert_eq!(restore.bind.len(), 0);
 
     sm.commit_restore();
@@ -296,7 +296,7 @@ fn test_phase3_state_manager_profile_lifecycle() {
     // Create a new profile
     sm.create_profile("workflow", Some("Daily workflow"), Some("windows"))
         .unwrap();
-    assert_eq!(sm.get_profile("workflow").unwrap().bindings.len(), 17);
+    assert_eq!(sm.get_profile("workflow").unwrap().bindings.len(), 19);
 
     // Save profile to temporary location
     let tmp = std::env::temp_dir().join("aethershift_lifecycle_test");

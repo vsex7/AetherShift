@@ -1134,6 +1134,14 @@ impl AetherDaemon {
             }
 
             // Phase 3 Profile Runtime Editing & Persistence
+            Request::SaveCurrentAsProfile { name, description } => {
+                let mut st = state.lock().await;
+                match st.save_current_as_profile(&name, description.as_deref()) {
+                    Ok(()) => Response::ok(format!("Saved current overlays as profile '{}'", name)),
+                    Err(e) => Response::err("SAVE_CURRENT_FAILED", e.to_string()),
+                }
+            }
+
             Request::CreateProfile {
                 name,
                 description,
@@ -1211,12 +1219,30 @@ impl AetherDaemon {
             }
 
             Request::DeleteProfile { profile } => {
+                let is_active = {
+                    let st = state.lock().await;
+                    st.active_profile_name() == profile
+                };
+                if is_active {
+                    let plan = {
+                        let st = state.lock().await;
+                        st.restore_plan()
+                    };
+                    let _ = Self::execute_plan(&plan, state, hyprland).await;
+                }
                 let res = {
                     let mut st = state.lock().await;
                     st.delete_profile(&profile, None)
                 };
                 match res {
-                    Ok(()) => Response::ok(format!("Profile '{}' deleted successfully", profile)),
+                    Ok(()) => {
+                        let msg = if is_active {
+                            format!("Active profile '{}' restored to native and deleted successfully", profile)
+                        } else {
+                            format!("Profile '{}' deleted successfully", profile)
+                        };
+                        Response::ok(msg)
+                    }
                     Err(e) => Response::err("DELETE_PROFILE_FAILED", e.to_string()),
                 }
             }

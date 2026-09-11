@@ -121,6 +121,14 @@ pub async fn execute_command(socket_path: &Path, cmd: crate::cli::Command) -> Re
                 let resp = send_daemon_request(socket_path, &Request::UpsertProfile { toml: toml_str }).await?;
                 handle_simple_response(resp)?;
             }
+            ProfileCommand::SaveCurrent { name, desc } => {
+                let req = Request::SaveCurrentAsProfile {
+                    name,
+                    description: desc,
+                };
+                let resp = send_daemon_request(socket_path, &req).await?;
+                handle_simple_response(resp)?;
+            }
             ProfileCommand::Create {
                 name,
                 desc,

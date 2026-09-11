@@ -145,6 +145,15 @@ pub enum ProfileCommand {
         /// Path to profile TOML file
         path: PathBuf,
     },
+    /// Save current active overlays as a new custom profile
+    SaveCurrent {
+        /// Name of the new profile
+        name: String,
+        /// Optional description
+        #[arg(short, long)]
+        desc: Option<String>,
+    },
+
     Create {
         /// Name of the new profile
         name: String,

@@ -116,3 +116,17 @@ description = "Open terminal"
 [bindings.action]
 type = "exec"
 arg = "omarchy-launch-terminal"
+
+[[bindings]]
+key_combo = "ALT + PRINT"
+description = "Toggle screen recording"
+[bindings.action]
+type = "exec"
+arg = "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord"
+
+[[bindings]]
+key_combo = "SUPER + PERIOD"
+description = "Toggle emoji picker"
+[bindings.action]
+type = "exec"
+arg = "omarchy-shell shell toggle omarchy.emojis"
