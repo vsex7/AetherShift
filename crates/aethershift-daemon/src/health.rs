@@ -1,4 +1,4 @@
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 
@@ -119,7 +119,7 @@ pub fn doctor_report(input: &DoctorInput<'_>) -> DoctorReport {
         if input.backend_connected {
             DiagnosticStatus::Ok
         } else {
-            DiagnosticStatus::Warning
+            DiagnosticStatus::Error
         },
         if input.backend_connected {
             format!("Compositor backend '{}' is connected", input.backend)

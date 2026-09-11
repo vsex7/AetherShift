@@ -29,14 +29,14 @@ use tracing::{debug, info, warn};
 
 use aethershift_core::binding::{Action, KeyCombo};
 use aethershift_core::layout::{GeometryMemory, LayoutEngine, Rect};
-use aethershift_core::plugin::{execute_plugin, PluginActionInput, PluginInfo, PluginRegistry};
+use aethershift_core::plugin::{execute_plugin, PluginActionInput, PluginRegistry};
 use aethershift_core::state::{BaselineBinding, StateManager, SwitchPlan};
 use aethershift_core::stats::StatsEngine;
 use aethershift_hyprland::action::{Direction, HyprAction, WorkspaceTarget};
 use aethershift_hyprland::bind::HyprKeyBinding;
 use aethershift_hyprland::client::HyprlandClient;
 use aethershift_protocol::{
-    ClientStream, DoctorReport, Event, MetricsFormat, MetricsReport, PluginInfo as WirePluginInfo,
+    ClientStream, MetricsFormat, PluginInfo as WirePluginInfo,
     PluginPermissionScope, Request, Response, ServerStream, SnapLayout, StatusInfo,
 };
 
@@ -65,6 +65,33 @@ pub struct AetherDaemon {
     hyprland: Option<HyprlandClient>,
     start_time: Instant,
     shutdown_tx: broadcast::Sender<()>,
+}
+
+fn plugin_to_wire(plugin: &aethershift_core::plugin::LoadedPlugin) -> WirePluginInfo {
+    let permissions = plugin
+        .manifest
+        .permissions
+        .iter()
+        .map(|permission| match permission {
+            aethershift_core::plugin::PluginPermissionScope::None => PluginPermissionScope::None,
+            aethershift_core::plugin::PluginPermissionScope::HyprlandDispatch => {
+                PluginPermissionScope::HyprlandDispatch
+            }
+            aethershift_core::plugin::PluginPermissionScope::Shell => PluginPermissionScope::Shell,
+            aethershift_core::plugin::PluginPermissionScope::Clipboard => PluginPermissionScope::Clipboard,
+            aethershift_core::plugin::PluginPermissionScope::Notification => PluginPermissionScope::Notification,
+        })
+        .collect();
+    WirePluginInfo {
+        id: plugin.manifest.id.clone(),
+        version: plugin.manifest.version.clone(),
+        description: plugin.manifest.description.clone(),
+        executable: plugin.manifest.executable.clone(),
+        timeout_ms: plugin.manifest.timeout_ms,
+        permissions,
+        enabled: plugin.manifest.enabled,
+        error: None,
+    }
 }
 
 impl AetherDaemon {
@@ -168,10 +195,13 @@ impl AetherDaemon {
                         .collect();
                     let mut st = self.state.lock().await;
                     st.set_baseline(baseline_items);
+                    self.health.lock().await.backend_connected = true;
+                    self.health.lock().await.baseline_count = count;
                     info!("Fetched {} baseline binds from Hyprland", count);
                 }
                 Err(e) => {
                     warn!("Could not fetch baseline binds from Hyprland: {}", e);
+                    self.health.lock().await.backend_connected = false;
                 }
             }
         }
@@ -355,7 +385,7 @@ impl AetherDaemon {
     pub async fn handle_cycle(
         state: &Mutex<StateManager>,
         stats: &Mutex<StatsEngine>,
-        plugins: &Mutex<PluginRegistry>,
+        _plugins: &Mutex<PluginRegistry>,
         health: &Mutex<HealthState>,
         hyprland: &Option<HyprlandClient>,
     ) -> Result<String, DaemonError> {
@@ -376,8 +406,17 @@ impl AetherDaemon {
             st.switch_profile(&target_name)?
         };
 
+        let started = Instant::now();
         Self::execute_plan(&plan, state, hyprland).await?;
         stats.lock().await.record_switch(&target_name);
+        let report = {
+            let st = state.lock().await;
+            st.last_conflict_report().clone()
+        };
+        health
+            .lock()
+            .await
+            .record_switch(&target_name, started.elapsed().as_micros(), report.skipped, report.forced);
         Ok(format!("Cycled to profile '{}'", target_name))
     }
 
@@ -387,6 +426,8 @@ impl AetherDaemon {
         state: &Mutex<StateManager>,
         geometry_memory: &Mutex<GeometryMemory>,
         stats: &Mutex<StatsEngine>,
+        plugins: &Mutex<PluginRegistry>,
+        health: &Mutex<HealthState>,
         hyprland: &Option<HyprlandClient>,
         start_time: Instant,
         shutdown_tx: &broadcast::Sender<()>,
@@ -443,9 +484,9 @@ impl AetherDaemon {
                     }
                 };
 
+                let started = Instant::now();
                 match Self::execute_plan(&plan, state, hyprland).await {
                     Ok(()) => {
-                        let started = Instant::now();
                         stats.lock().await.record_switch(&profile);
                         let report = {
                             let st = state.lock().await;
@@ -472,7 +513,7 @@ Response::ok(msg)
                 }
             }
             Request::Cycle => {
-                match Self::handle_cycle(state, stats, hyprland).await {
+                match Self::handle_cycle(state, stats, plugins, health, hyprland).await {
                     Ok(msg) => {
                         send_notification("AetherShift", &msg, false, disabled);
                         Response::ok(msg)
@@ -492,8 +533,9 @@ Response::ok(msg)
 
                 match Self::execute_plan(&plan, state, hyprland).await {
                     Ok(()) => {
+                        let started = Instant::now();
                         stats.lock().await.record_switch("native");
-                        health.lock().await.record_restore(0);
+                        health.lock().await.record_restore(started.elapsed().as_micros());
                         let msg = "Restored baseline keybindings";
                         send_notification("AetherShift", msg, false, disabled);
                         send_desktop_notification("AetherShift Paradigm", "Restored baseline keybindings", "normal");
@@ -848,7 +890,11 @@ Response::ok("Successfully restored baseline keybindings")
                     .collect();
                 let failures: Vec<String> = registry
                     .failures()
-                    .filter(|(failed_id, _)| id.as_deref().map(|wanted| failed_id == wanted).unwrap_or(true))
+                    .filter(|(failed_id, _)| {
+                        id.as_deref()
+                            .map(|wanted| failed_id.as_str() == wanted)
+                            .unwrap_or(true)
+                    })
                     .map(|(failed_id, error)| format!("{failed_id}: {error}"))
                     .collect();
                 let payload = serde_json::json!({ "valid": failures.is_empty(), "plugins": selected, "failures": failures });
